@@ -23,7 +23,8 @@ import {
   fetchProjectTasks,
   createProjectTask,
   updateTaskAction,
-  isOnline as checkIsOnline
+  isOnline as checkIsOnline,
+  fetchAISettings
 } from './services/api';
 import { Header } from './components/Header';
 import { Sidebar, SidebarTab } from './components/Sidebar';
@@ -31,6 +32,15 @@ import { DocumentEditor } from './components/DocumentEditor';
 import { AgentPanel } from './components/AgentPanel';
 import { BottomDrawer } from './components/BottomDrawer';
 import { NewProjectWizard } from './components/NewProjectWizard';
+import { AIProviderManager } from './components/AIProviderManager';
+import {
+  FolderTree,
+  Edit3,
+  Bot,
+  Terminal
+} from 'lucide-react';
+
+type MobileView = 'files' | 'editor' | 'agent' | 'console';
 
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -46,6 +56,9 @@ export default function App() {
   const [specialistRole, setSpecialistRole] = useState<SpecialistRole>('director');
   const [permissionMode, setPermissionMode] = useState<AgentPermissionMode>('ask');
   const [selectedModel, setSelectedModel] = useState<string>('gemini-3.8-flash');
+  const [activeProvider, setActiveProvider] = useState<string>('gemini');
+  const [activeProviderName, setActiveProviderName] = useState<string>('Google Gemini');
+  const [aiManagerOpen, setAiManagerOpen] = useState(false);
 
   // UI Views & Drawers
   const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab>('files');
@@ -53,6 +66,25 @@ export default function App() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(checkIsOnline());
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+
+  // Load Initial AI Router Settings
+  useEffect(() => {
+    fetchAISettings()
+      .then(settings => {
+        if (settings.fallbackCascade && settings.fallbackCascade.length > 0) {
+          const top = settings.fallbackCascade[0];
+          setActiveProvider(top.providerId);
+          setSelectedModel(top.modelId);
+          setActiveProviderName(top.providerId.toUpperCase());
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Responsive state
+  const [mobileActiveView, setMobileActiveView] = useState<MobileView>('editor');
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+  const [desktopAgentOpen, setDesktopAgentOpen] = useState(true);
 
   // Background Tasks & Logs
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
@@ -155,7 +187,11 @@ export default function App() {
     setSelectedFileId(fileId);
     const f = files.find(x => x.id === fileId) || null;
     setSelectedFile(f);
-    if (f) addLog('info', `Abierto para edición: ${f.name}`);
+    if (f) {
+      addLog('info', `Abierto para edición: ${f.name}`);
+      // In mobile mode, switch directly to editor
+      setMobileActiveView('editor');
+    }
   };
 
   // Save content
@@ -209,6 +245,7 @@ export default function App() {
       setSelectedFileId(created.id);
       setSelectedFile(created);
       addLog('tool', `Creado capítulo: "${name}"`);
+      setMobileActiveView('editor');
     } catch (err: any) {
       addLog('warn', `Error creando capítulo: ${err.message}`);
     }
@@ -230,6 +267,7 @@ export default function App() {
       setSelectedFileId(created.id);
       setSelectedFile(created);
       addLog('tool', `Creada nota de investigación: "${name}"`);
+      setMobileActiveView('editor');
     } catch (err: any) {
       addLog('warn', `Error creando archivo de investigación: ${err.message}`);
     }
@@ -276,10 +314,24 @@ export default function App() {
         message: text,
         specialistRole,
         permissionMode,
-        requestedModel: selectedModel
+        requestedProvider: activeProvider,
+        requestedModel: selectedModel,
+        taskType: specialistRole === 'autor' || specialistRole === 'editor' ? 'writing' : 'agent_action'
       });
 
       setMessages(prev => [...prev, agentMsg]);
+
+      // If automatic fallback occurred, alert the user and record
+      if (agentMsg.fallbackNotice) {
+        addLog('warn', `🔄 ${agentMsg.fallbackNotice}`);
+      }
+      if (agentMsg.providerUsed) {
+        setActiveProvider(agentMsg.providerUsed);
+        setActiveProviderName(agentMsg.providerUsed.toUpperCase());
+      }
+      if (agentMsg.modelUsed) {
+        setSelectedModel(agentMsg.modelUsed);
+      }
 
       // If tools were completed, refresh files and tasks
       if (agentMsg.toolCalls && agentMsg.toolCalls.some(tc => tc.status === 'completed')) {
@@ -304,7 +356,7 @@ export default function App() {
         {
           id: `msg-err-${Date.now()}`,
           role: 'system',
-          text: `Error al procesar con el modelo de IA: ${err.message}. Puedes reintentar o cambiar de proveedor en el panel de configuración.`,
+          text: `Error al procesar con el modelo de IA: ${err.message}.`,
           timestamp: new Date().toISOString()
         }
       ]);
@@ -324,7 +376,6 @@ export default function App() {
         action
       });
 
-      // Update message tool status in state
       setMessages(prev =>
         prev.map(m => {
           if (!m.toolCalls) return m;
@@ -344,7 +395,6 @@ export default function App() {
         })
       );
 
-      // Refresh files if approved
       if (action === 'approve') {
         const refreshed = await fetchFiles(currentProjectId);
         setFiles(refreshed);
@@ -358,9 +408,9 @@ export default function App() {
 
   // Quality Audit Button Action
   const handleTriggerQualityAudit = () => {
-    setActiveSidebarTab('files');
     handleSendMessage('Realiza una auditoría completa de calidad, coherencia temporal y ortotipografía en el libro.');
     setDrawerOpen(true);
+    setMobileActiveView('console');
   };
 
   // Background Task Actions
@@ -411,6 +461,7 @@ export default function App() {
       setProjects(prev => [created, ...prev]);
       await selectProject(created.id);
       addLog('success', `¡Nuevo proyecto creado con éxito: "${created.title}"!`);
+      setMobileActiveView('editor');
     } catch (err: any) {
       addLog('warn', `Error al crear proyecto: ${err.message}`);
     }
@@ -419,7 +470,7 @@ export default function App() {
   const runningTasksCount = tasks.filter(t => t.status === 'running').length;
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0c12] text-slate-100 font-sans antialiased">
+    <div className="flex flex-col h-[100dvh] w-full max-w-full overflow-hidden bg-[#0a0c12] text-slate-100 font-sans antialiased">
       {/* Top Header */}
       <Header
         projects={projects}
@@ -433,65 +484,226 @@ export default function App() {
         runningTasksCount={runningTasksCount}
         lastSavedAt={lastSavedAt}
         onTriggerQualityAudit={handleTriggerQualityAudit}
+        desktopSidebarOpen={desktopSidebarOpen}
+        onToggleDesktopSidebar={() => setDesktopSidebarOpen(!desktopSidebarOpen)}
+        desktopAgentOpen={desktopAgentOpen}
+        onToggleDesktopAgent={() => setDesktopAgentOpen(!desktopAgentOpen)}
+        onOpenAIManager={() => setAiManagerOpen(true)}
+        activeProviderName={activeProviderName}
+        activeModelName={selectedModel}
       />
 
-      {/* Main Workspace (3 Columns) */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Sidebar */}
-        <Sidebar
+      {/* Main Workspace */}
+      <div className="flex-1 flex overflow-hidden relative w-full min-w-0">
+        {/* DESKTOP LAYOUT (>= 1024px / lg:) */}
+        <div className="hidden lg:flex flex-1 overflow-hidden w-full min-w-0 relative">
+          {/* Left Sidebar */}
+          {desktopSidebarOpen && (
+            <Sidebar
+              currentProject={currentProject}
+              files={files}
+              selectedFileId={selectedFileId}
+              onSelectFile={handleSelectFile}
+              onCreateChapter={handleCreateChapter}
+              onCreateResearchFile={handleCreateResearchFile}
+              onDeleteFile={handleDeleteFile}
+              activeTab={activeSidebarTab}
+              onChangeTab={setActiveSidebarTab}
+              permissionMode={permissionMode}
+              onChangePermissionMode={setPermissionMode}
+              onUpdateProject={handleUpdateProject}
+              isMobile={false}
+              onOpenAIManager={() => setAiManagerOpen(true)}
+            />
+          )}
+
+          {/* Center Document Editor & Diff Viewer */}
+          <DocumentEditor
+            file={selectedFile}
+            onSaveContent={handleSaveContent}
+            onRollbackVersion={handleRollbackVersion}
+            onAskAgentToEdit={inst => handleSendMessage(inst)}
+          />
+
+          {/* Right Autonomous Agent Panel */}
+          {desktopAgentOpen && (
+            <AgentPanel
+              messages={messages}
+              isThinking={isThinking}
+              specialistRole={specialistRole}
+              onChangeRole={setSpecialistRole}
+              permissionMode={permissionMode}
+              onChangePermissionMode={setPermissionMode}
+              onSendMessage={handleSendMessage}
+              onApproveTool={handleApproveTool}
+              selectedModel={selectedModel}
+              isMobile={false}
+              onOpenAIManager={() => setAiManagerOpen(true)}
+              activeProviderId={activeProvider}
+            />
+          )}
+        </div>
+
+        {/* MOBILE / TABLET LAYOUT (< 1024px) */}
+        <div className="flex lg:hidden flex-1 flex-col overflow-hidden w-full min-w-0 relative">
+          {mobileActiveView === 'files' && (
+            <Sidebar
+              currentProject={currentProject}
+              files={files}
+              selectedFileId={selectedFileId}
+              onSelectFile={handleSelectFile}
+              onCreateChapter={handleCreateChapter}
+              onCreateResearchFile={handleCreateResearchFile}
+              onDeleteFile={handleDeleteFile}
+              activeTab={activeSidebarTab}
+              onChangeTab={setActiveSidebarTab}
+              permissionMode={permissionMode}
+              onChangePermissionMode={setPermissionMode}
+              onUpdateProject={handleUpdateProject}
+              isMobile={true}
+              onOpenAIManager={() => setAiManagerOpen(true)}
+            />
+          )}
+
+          {mobileActiveView === 'editor' && (
+            <DocumentEditor
+              file={selectedFile}
+              onSaveContent={handleSaveContent}
+              onRollbackVersion={handleRollbackVersion}
+              onAskAgentToEdit={inst => handleSendMessage(inst)}
+              onOpenMobileSidebar={() => setMobileActiveView('files')}
+            />
+          )}
+
+          {mobileActiveView === 'agent' && (
+            <AgentPanel
+              messages={messages}
+              isThinking={isThinking}
+              specialistRole={specialistRole}
+              onChangeRole={setSpecialistRole}
+              permissionMode={permissionMode}
+              onChangePermissionMode={setPermissionMode}
+              onSendMessage={handleSendMessage}
+              onApproveTool={handleApproveTool}
+              selectedModel={selectedModel}
+              isMobile={true}
+              onOpenAIManager={() => setAiManagerOpen(true)}
+              activeProviderId={activeProvider}
+            />
+          )}
+
+          {mobileActiveView === 'console' && (
+            <BottomDrawer
+              isOpen={true}
+              onToggle={() => {}}
+              tasks={tasks}
+              onTaskAction={handleTaskAction}
+              onCreateNewTask={handleCreateNewTask}
+              currentProject={currentProject}
+              files={files}
+              activityLogs={activityLogs}
+              isMobileFullView={true}
+              onOpenAIManager={() => setAiManagerOpen(true)}
+              selectedModel={selectedModel}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Desktop Bottom Drawer (Docked) */}
+      <div className="hidden lg:block w-full shrink-0">
+        <BottomDrawer
+          isOpen={drawerOpen}
+          onToggle={() => setDrawerOpen(!drawerOpen)}
+          tasks={tasks}
+          onTaskAction={handleTaskAction}
+          onCreateNewTask={handleCreateNewTask}
           currentProject={currentProject}
           files={files}
-          selectedFileId={selectedFileId}
-          onSelectFile={handleSelectFile}
-          onCreateChapter={handleCreateChapter}
-          onCreateResearchFile={handleCreateResearchFile}
-          onDeleteFile={handleDeleteFile}
-          activeTab={activeSidebarTab}
-          onChangeTab={setActiveSidebarTab}
-          permissionMode={permissionMode}
-          onChangePermissionMode={setPermissionMode}
-          onUpdateProject={handleUpdateProject}
-        />
-
-        {/* Center Document Editor & Diff Viewer */}
-        <DocumentEditor
-          file={selectedFile}
-          onSaveContent={handleSaveContent}
-          onRollbackVersion={handleRollbackVersion}
-          onAskAgentToEdit={inst => handleSendMessage(inst)}
-        />
-
-        {/* Right Autonomous Agent Panel */}
-        <AgentPanel
-          messages={messages}
-          isThinking={isThinking}
-          specialistRole={specialistRole}
-          onChangeRole={setSpecialistRole}
-          permissionMode={permissionMode}
-          onChangePermissionMode={setPermissionMode}
-          onSendMessage={handleSendMessage}
-          onApproveTool={handleApproveTool}
+          activityLogs={activityLogs}
+          isMobileFullView={false}
+          onOpenAIManager={() => setAiManagerOpen(true)}
           selectedModel={selectedModel}
         />
       </div>
 
-      {/* Bottom Collapsible Drawer (Terminal, Background Tasks, Activity Log, Metrics) */}
-      <BottomDrawer
-        isOpen={drawerOpen}
-        onToggle={() => setDrawerOpen(!drawerOpen)}
-        tasks={tasks}
-        onTaskAction={handleTaskAction}
-        onCreateNewTask={handleCreateNewTask}
-        currentProject={currentProject}
-        files={files}
-        activityLogs={activityLogs}
-      />
+      {/* Mobile Dedicated Bottom Navigation Bar */}
+      <nav className="flex lg:hidden h-14 bg-[#0d0f17] border-t border-[#1d2333] items-center justify-around px-1 select-none z-30 shrink-0 w-full pb-safe">
+        <button
+          onClick={() => setMobileActiveView('files')}
+          className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-colors min-h-[44px] ${
+            mobileActiveView === 'files'
+              ? 'text-violet-400 font-semibold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <FolderTree className="w-4 h-4 mb-0.5" />
+          <span className="text-[10px]">Proyecto</span>
+        </button>
+
+        <button
+          onClick={() => setMobileActiveView('editor')}
+          className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-colors min-h-[44px] ${
+            mobileActiveView === 'editor'
+              ? 'text-violet-400 font-semibold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Edit3 className="w-4 h-4 mb-0.5" />
+          <span className="text-[10px]">Editor</span>
+        </button>
+
+        <button
+          onClick={() => setMobileActiveView('agent')}
+          className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-colors min-h-[44px] relative ${
+            mobileActiveView === 'agent'
+              ? 'text-violet-400 font-semibold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Bot className="w-4 h-4 mb-0.5" />
+          <span className="text-[10px]">Agente</span>
+          {isThinking && (
+            <span className="absolute top-1 right-5 w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setMobileActiveView('console')}
+          className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-colors min-h-[44px] relative ${
+            mobileActiveView === 'console'
+              ? 'text-violet-400 font-semibold'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Terminal className="w-4 h-4 mb-0.5" />
+          <span className="text-[10px]">Consola</span>
+          {runningTasksCount > 0 && (
+            <span className="absolute top-1 right-5 px-1 py-0.2 rounded-full bg-violet-600 text-white font-mono text-[8px] font-bold">
+              {runningTasksCount}
+            </span>
+          )}
+        </button>
+      </nav>
 
       {/* New Project Editorial Wizard Modal */}
       <NewProjectWizard
         isOpen={wizardOpen}
         onClose={() => setWizardOpen(false)}
         onCreateProject={handleCreateProjectFromWizard}
+      />
+
+      {/* AI Provider Manager Modal (Multi-Provider & Fallback Engine) */}
+      <AIProviderManager
+        isOpen={aiManagerOpen}
+        onClose={() => setAiManagerOpen(false)}
+        onSelectActiveModel={(pId, mId) => {
+          setActiveProvider(pId);
+          setSelectedModel(mId);
+          setActiveProviderName(pId.toUpperCase());
+          addLog('info', `Modelo activo reasignado a: ${mId} (${pId})`);
+        }}
+        onLogActivity={addLog}
       />
     </div>
   );

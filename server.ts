@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import { aiRouter } from './server_ai/router.ts';
 
 dotenv.config();
 
@@ -694,94 +695,67 @@ app.post('/api/projects/:id/files/:fileId/rollback', (req: Request, res: Respons
   res.json(current);
 });
 
-// GET /api/ai/providers
+// ---------------- AI PROVIDER MANAGER ENDPOINTS ---------------- //
+
+// GET /api/ai/providers - List all providers with statuses, models, and reset policies
 app.get('/api/ai/providers', (req: Request, res: Response) => {
-  res.json({
-    hasServerGeminiKey: Boolean(apiKey),
-    activeProvider: 'gemini',
-    providers: [
-      {
-        id: 'gemini',
-        name: 'Google Gemini (Oficial)',
-        type: 'gemini',
-        isConfigured: Boolean(apiKey),
-        hasCustomKey: Boolean(apiKey),
-        enabled: true,
-        models: [
-          {
-            id: 'gemini-3.8-flash',
-            name: 'Gemini 3.8 Flash (Recomendado)',
-            tier: 'free',
-            contextTokens: 1048576,
-            capabilities: ['Especialista Editorial', 'Velocidad', 'Cuota Gratuita', 'Razonamiento Autónomo']
-          },
-          {
-            id: 'gemini-3.1-flash-lite',
-            name: 'Gemini 3.1 Flash Lite',
-            tier: 'free',
-            contextTokens: 1048576,
-            capabilities: ['Ultra Ligero', 'Máxima Velocidad', 'Bajo Consumo']
-          },
-          {
-            id: 'gemini-4-argon',
-            name: 'Gemini 4 Argon (Pro)',
-            tier: 'paid',
-            contextTokens: 2097152,
-            capabilities: ['Razonamiento Profundo', 'Análisis Complejo', 'Gran Escala']
-          }
-        ]
-      },
-      {
-        id: 'deepseek',
-        name: 'DeepSeek (Compatible)',
-        type: 'deepseek',
-        isConfigured: false,
-        hasCustomKey: false,
-        enabled: true,
-        models: [
-          {
-            id: 'deepseek-chat',
-            name: 'DeepSeek V3',
-            tier: 'low_cost',
-            contextTokens: 64000,
-            capabilities: ['Escritura Narrativa', 'Económico']
-          },
-          {
-            id: 'deepseek-reasoner',
-            name: 'DeepSeek R1',
-            tier: 'low_cost',
-            contextTokens: 64000,
-            capabilities: ['Razonamiento Coherente', 'Plot Building']
-          }
-        ]
-      },
-      {
-        id: 'openrouter',
-        name: 'OpenRouter (Modelos Libres)',
-        type: 'openrouter',
-        isConfigured: false,
-        hasCustomKey: false,
-        enabled: true,
-        models: [
-          {
-            id: 'meta-llama/llama-3.3-70b-instruct:free',
-            name: 'Llama 3.3 70B (Free Tier)',
-            tier: 'free',
-            contextTokens: 128000,
-            capabilities: ['Open Source', 'Gratuito']
-          },
-          {
-            id: 'mistralai/mistral-small-24b-instruct-2501:free',
-            name: 'Mistral Small 24B (Free Tier)',
-            tier: 'free',
-            contextTokens: 32000,
-            capabilities: ['Redacción Rápida']
-          }
-        ]
-      }
-    ]
-  });
+  try {
+    const providers = aiRouter.getProvidersList();
+    const settings = aiRouter.getSettings();
+    res.json({
+      providers,
+      settings,
+      hasServerGeminiKey: Boolean(apiKey)
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
+
+// POST /api/ai/providers/:id/key - Configure API key securely on backend
+app.post('/api/ai/providers/:id/key', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { apiKey } = req.body;
+    aiRouter.setKey(id, apiKey || '');
+    const providers = aiRouter.getProvidersList();
+    res.json({ success: true, providers });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ai/providers/:id/test - Test connection to provider with ping
+app.post('/api/ai/providers/:id/test', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const testResult = await aiRouter.testProviderConnection(id);
+    res.json(testResult);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/ai/settings - Get routing settings
+app.get('/api/ai/settings', (req: Request, res: Response) => {
+  res.json(aiRouter.getSettings());
+});
+
+// POST /api/ai/settings - Update routing settings (mode, priorityOrder, taskMapping)
+app.post('/api/ai/settings', (req: Request, res: Response) => {
+  try {
+    const updated = aiRouter.updateSettings(req.body);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/ai/fallbacks - Get history of automatic fallback switches
+app.get('/api/ai/fallbacks', (req: Request, res: Response) => {
+  res.json(aiRouter.getFallbackHistory());
+});
+
 
 // GET /api/tasks
 app.get('/api/projects/:id/tasks', (req: Request, res: Response) => {
@@ -856,7 +830,9 @@ app.post('/api/agent/chat', async (req: Request, res: Response) => {
       message,
       specialistRole = 'director',
       permissionMode = 'ask', // 'allow' | 'ask' | 'deny'
-      requestedModel = 'gemini-3.8-flash'
+      requestedProvider,
+      requestedModel = 'gemini-3.8-flash',
+      taskType = 'agentTools'
     } = req.body;
 
     const project = getProject(projectId);
@@ -939,24 +915,30 @@ DIRECTRICES:
 `;
 
     let agentResult: any = null;
+    let providerUsed = requestedProvider || 'Google Gemini';
+    let modelUsed = requestedModel || 'gemini-3.8-flash';
+    let fallbackNotice: string | undefined = undefined;
 
-    if (aiClient) {
-      try {
-        const response = await aiClient.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: `Instrucción del autor/usuario: "${message}"`,
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: 'application/json',
-          },
-        });
-
-        const rawText = response.text || '{}';
-        agentResult = JSON.parse(rawText);
-      } catch (geminiErr: any) {
-        console.error('Gemini API call error:', geminiErr);
-        // Fallback to intelligent deterministic rule engine if API fails or quota exceeded
+    try {
+      const routerRes = await aiRouter.executeWithFallback({
+        systemPrompt,
+        userPrompt: `Instrucción del autor/usuario: "${message}"`,
+        taskType: (taskType as any) || 'agentTools',
+        preferredProvider: requestedProvider,
+        preferredModel: requestedModel,
+        projectId
+      });
+      agentResult = routerRes.result;
+      providerUsed = routerRes.providerUsed;
+      modelUsed = routerRes.modelUsed;
+      if (routerRes.fallbackChain.length > 0) {
+        fallbackNotice = routerRes.fallbackChain
+          .map(f => `⚡ Conmutado automáticamente de ${f.fromProvider} (${f.fromModel}) a ${f.toProvider} (${f.toModel}): ${f.reason}`)
+          .join('\n');
       }
+    } catch (routerErr: any) {
+      console.warn('[Server] AI Router fallback to deterministic rule engine:', routerErr.message);
+      fallbackNotice = `⚠️ ${routerErr.message}. Ejecutando motor editorial determinista local sin pérdida de memoria.`;
     }
 
     // Fallback deterministic autonomous agent logic if AI was unavailable or errored
@@ -1220,7 +1202,9 @@ DIRECTRICES:
       specialistRole,
       text: agentResult.response || 'Tarea procesada por el agente editorial.',
       timestamp: new Date().toISOString(),
-      modelUsed: requestedModel,
+      providerUsed,
+      modelUsed,
+      fallbackNotice,
       plan: agentResult.plan || [],
       toolCalls: executedTools,
       checkpoints: agentResult.checkpoints || [`chk_op_${Date.now()}`],

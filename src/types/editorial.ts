@@ -173,6 +173,8 @@ export interface AgentMessage {
   text: string;
   timestamp: string;
   modelUsed?: string;
+  providerUsed?: string;
+  fallbackNotice?: string;
   thought?: string;
   plan?: string[];
   toolCalls?: ToolCall[];

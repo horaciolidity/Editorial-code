@@ -1,0 +1,34 @@
+{
+  "history": [],
+  "providers": {
+    "gemini": {
+      "requestsCountToday": 0,
+      "tokensConsumedToday": 0,
+      "lastErrorMessage": "{\"error\":{\"code\":503,\"message\":\"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\",\"status\":\"UNAVAILABLE\"}}"
+    },
+    "groq": {
+      "requestsCountToday": 0,
+      "tokensConsumedToday": 0
+    },
+    "cerebras": {
+      "requestsCountToday": 0,
+      "tokensConsumedToday": 0
+    },
+    "openrouter": {
+      "requestsCountToday": 0,
+      "tokensConsumedToday": 0
+    },
+    "deepseek": {
+      "requestsCountToday": 0,
+      "tokensConsumedToday": 0
+    },
+    "mistral": {
+      "requestsCountToday": 0,
+      "tokensConsumedToday": 0
+    },
+    "huggingface": {
+      "requestsCountToday": 0,
+      "tokensConsumedToday": 0
+    }
+  }
+}

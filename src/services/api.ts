@@ -228,7 +228,9 @@ export async function sendAgentMessage(params: {
   message: string;
   specialistRole: SpecialistRole;
   permissionMode: AgentPermissionMode;
-  requestedModel: string;
+  requestedModel?: string;
+  requestedProvider?: string;
+  taskType?: string;
 }): Promise<AgentMessage> {
   const res = await fetch('/api/agent/chat', {
     method: 'POST',
@@ -287,16 +289,58 @@ export async function updateTaskAction(projectId: string, taskId: string, action
   return res.json();
 }
 
+// ---------------- AI PROVIDERS & MULTI-MODEL ROUTER ---------------- //
 export async function fetchAIProviders() {
   try {
     const res = await fetch('/api/ai/providers');
-    if (!res.ok) throw new Error('Error');
+    if (!res.ok) throw new Error('Error al obtener proveedores');
     return res.json();
-  } catch {
+  } catch (e) {
     return {
-      hasServerGeminiKey: true,
-      activeProvider: 'gemini',
-      providers: []
+      providers: [],
+      settings: null,
+      hasServerGeminiKey: true
     };
   }
+}
+
+export async function saveProviderApiKey(providerId: string, apiKey: string) {
+  const res = await fetch(`/api/ai/providers/${providerId}/key`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey })
+  });
+  if (!res.ok) throw new Error('Error al guardar API Key');
+  return res.json();
+}
+
+export async function testProviderApi(providerId: string) {
+  const res = await fetch(`/api/ai/providers/${providerId}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  });
+  if (!res.ok) throw new Error('Error al probar conexión');
+  return res.json();
+}
+
+export async function fetchAISettings() {
+  const res = await fetch('/api/ai/settings');
+  if (!res.ok) throw new Error('Error al obtener configuración de IA');
+  return res.json();
+}
+
+export async function updateAIRouterSettings(updates: any) {
+  const res = await fetch('/api/ai/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates)
+  });
+  if (!res.ok) throw new Error('Error al actualizar ajustes de enrutador IA');
+  return res.json();
+}
+
+export async function fetchAIFallbackHistory() {
+  const res = await fetch('/api/ai/fallbacks');
+  if (!res.ok) return [];
+  return res.json();
 }
