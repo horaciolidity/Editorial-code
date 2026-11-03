@@ -1,0 +1,8 @@
+{
+  "name": "Editorial Code",
+  "description": "Estudio editorial autónomo e inteligente inspirado en OpenCode para creación, edición, memoria narrativa, maquetación y publicación profesional de libros.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
