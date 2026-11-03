@@ -169,6 +169,18 @@ export class AIRouterManager {
     return this.settings;
   }
 
+  public updateProviderConfig(providerId: string, updates: { enabled?: boolean; defaultModel?: string }): ProviderState {
+    const p = this.providers.get(providerId);
+    if (!p) throw new Error('Proveedor no encontrado');
+    if (updates.enabled !== undefined) p.enabled = updates.enabled;
+    if (updates.defaultModel) {
+      const validModel = p.models.some(m => m.id === updates.defaultModel);
+      if (validModel) p.defaultModel = updates.defaultModel;
+    }
+    this.saveStats();
+    return p;
+  }
+
   public getFallbackHistory(): FallbackEvent[] {
     return this.fallbackHistory.slice(-50);
   }

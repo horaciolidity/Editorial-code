@@ -5,6 +5,8 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
     id: 'gemini',
     name: 'Google Gemini',
     type: 'gemini',
+    apiKeyUrl: 'https://aistudio.google.com/app/apikey',
+    docsUrl: 'https://ai.google.dev/docs',
     isConfigured: false,
     hasCustomKey: false,
     enabled: true,
@@ -18,7 +20,7 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
       resetScheduleDescription: 'La cuota gratuita se restablece automáticamente cada 24 horas a las 00:00 UTC (15 RPM / 1.500 peticiones diarias).',
       creditsExpire: false,
       replenishesAutomatically: true,
-      officialDocUrl: 'https://ai.google.dev/pricing'
+      officialDocUrl: 'https://ai.google.dev/docs'
     },
     defaultModel: 'gemini-3.8-flash',
     models: [
@@ -83,6 +85,8 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
     name: 'Groq (LPU Inference)',
     type: 'groq',
     baseUrl: 'https://api.groq.com/openai/v1/chat/completions',
+    apiKeyUrl: 'https://console.groq.com/keys',
+    docsUrl: 'https://console.groq.com/docs',
     isConfigured: false,
     hasCustomKey: false,
     enabled: true,
@@ -96,7 +100,7 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
       resetScheduleDescription: 'Free Tier oficial permanente con ~30 RPM y 14.400 peticiones diarias. Los límites por minuto se restablecen cada 60 segundos; la cuota diaria a las 00:00 UTC.',
       creditsExpire: false,
       replenishesAutomatically: true,
-      officialDocUrl: 'https://console.groq.com/docs/rate-limits'
+      officialDocUrl: 'https://console.groq.com/docs'
     },
     defaultModel: 'llama-3.3-70b-versatile',
     models: [
@@ -161,6 +165,8 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
     name: 'Cerebras Inference',
     type: 'cerebras',
     baseUrl: 'https://api.cerebras.ai/v1/chat/completions',
+    apiKeyUrl: 'https://cloud.cerebras.ai/',
+    docsUrl: 'https://inference-docs.cerebras.ai/',
     isConfigured: false,
     hasCustomKey: false,
     enabled: true,
@@ -174,7 +180,7 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
       resetScheduleDescription: 'Free tier oficial con 30 RPM y 60.000 TPM. Los límites se renuevan en ventana deslizante cada minuto y diariamente a las 00:00 UTC.',
       creditsExpire: false,
       replenishesAutomatically: true,
-      officialDocUrl: 'https://cerebras.ai/pricing'
+      officialDocUrl: 'https://inference-docs.cerebras.ai/'
     },
     defaultModel: 'llama3.1-70b',
     models: [
@@ -219,6 +225,8 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
     name: 'OpenRouter (Modelos Libres)',
     type: 'openrouter',
     baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    apiKeyUrl: 'https://openrouter.ai/keys',
+    docsUrl: 'https://openrouter.ai/docs',
     isConfigured: false,
     hasCustomKey: false,
     enabled: true,
@@ -232,7 +240,7 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
       resetScheduleDescription: 'Permite acceder a modelos con sufijo :free con 200 peticiones gratuitas diarias por cuenta registrada, restableciéndose en ventana móvil de 24h.',
       creditsExpire: false,
       replenishesAutomatically: true,
-      officialDocUrl: 'https://openrouter.ai/docs/limits'
+      officialDocUrl: 'https://openrouter.ai/docs'
     },
     defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
     models: [
@@ -291,6 +299,8 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
     name: 'DeepSeek Official API',
     type: 'deepseek',
     baseUrl: 'https://api.deepseek.com/v1/chat/completions',
+    apiKeyUrl: 'https://platform.deepseek.com/api_keys',
+    docsUrl: 'https://platform.deepseek.com/api-docs',
     isConfigured: false,
     hasCustomKey: false,
     enabled: true,
@@ -304,7 +314,7 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
       resetScheduleDescription: 'Otorga saldo promocional gratuito inicial al registrarse. NO se renueva automáticamente al agotarse (los tokens consumidos no se regeneran; requiere recarga económica posterior de bajo coste).',
       creditsExpire: true,
       replenishesAutomatically: false,
-      officialDocUrl: 'https://api-docs.deepseek.com'
+      officialDocUrl: 'https://platform.deepseek.com/api-docs'
     },
     defaultModel: 'deepseek-chat',
     models: [
@@ -347,6 +357,8 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
     name: 'Mistral AI (La Plateforme)',
     type: 'mistral',
     baseUrl: 'https://api.mistral.ai/v1/chat/completions',
+    apiKeyUrl: 'https://console.mistral.ai/api-keys/',
+    docsUrl: 'https://docs.mistral.ai/',
     isConfigured: false,
     hasCustomKey: false,
     enabled: true,
@@ -360,7 +372,7 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
       resetScheduleDescription: 'Cuentas con tier de experimentación gratuito oficial (1 RPS). Los límites por segundo se renuevan continuamente sin cuota monetaria fija.',
       creditsExpire: false,
       replenishesAutomatically: true,
-      officialDocUrl: 'https://docs.mistral.ai/api/'
+      officialDocUrl: 'https://docs.mistral.ai/'
     },
     defaultModel: 'mistral-small-latest',
     models: [
@@ -403,6 +415,8 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
     name: 'Hugging Face (Inference API)',
     type: 'huggingface',
     baseUrl: 'https://api-inference.huggingface.co/v1/chat/completions',
+    apiKeyUrl: 'https://huggingface.co/settings/tokens',
+    docsUrl: 'https://huggingface.co/docs/api-inference/',
     isConfigured: false,
     hasCustomKey: false,
     enabled: true,
@@ -416,7 +430,7 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
       resetScheduleDescription: 'Tier serverless gratuito oficial para modelos abiertos. El rate limit se renueva automáticamente tras ventanas de enfriamiento horarias.',
       creditsExpire: false,
       replenishesAutomatically: true,
-      officialDocUrl: 'https://huggingface.co/docs/api-inference'
+      officialDocUrl: 'https://huggingface.co/docs/api-inference/'
     },
     defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
     models: [

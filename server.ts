@@ -725,6 +725,18 @@ app.post('/api/ai/providers/:id/key', (req: Request, res: Response) => {
   }
 });
 
+// POST /api/ai/providers/:id/config - Update provider configuration (enabled, defaultModel)
+app.post('/api/ai/providers/:id/config', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { enabled, defaultModel } = req.body;
+    const updated = aiRouter.updateProviderConfig(id, { enabled, defaultModel });
+    res.json({ success: true, provider: updated, providers: aiRouter.getProvidersList() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/ai/providers/:id/test - Test connection to provider with ping
 app.post('/api/ai/providers/:id/test', async (req: Request, res: Response) => {
   try {

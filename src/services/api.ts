@@ -314,6 +314,16 @@ export async function saveProviderApiKey(providerId: string, apiKey: string) {
   return res.json();
 }
 
+export async function updateProviderConfig(providerId: string, updates: { enabled?: boolean; defaultModel?: string }) {
+  const res = await fetch(`/api/ai/providers/${providerId}/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates)
+  });
+  if (!res.ok) throw new Error('Error al actualizar configuración de proveedor');
+  return res.json();
+}
+
 export async function testProviderApi(providerId: string) {
   const res = await fetch(`/api/ai/providers/${providerId}/test`, {
     method: 'POST',

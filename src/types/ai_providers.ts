@@ -35,6 +35,8 @@ export interface ProviderState {
   name: string;
   type: 'gemini' | 'groq' | 'cerebras' | 'openrouter' | 'deepseek' | 'mistral' | 'huggingface' | 'local';
   baseUrl?: string;
+  apiKeyUrl?: string;
+  docsUrl?: string;
   isConfigured: boolean;
   hasCustomKey: boolean;
   maskedKey?: string;
