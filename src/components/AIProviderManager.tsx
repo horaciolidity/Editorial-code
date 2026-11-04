@@ -26,13 +26,19 @@ import {
   Globe,
   BookOpen,
   Trash2,
-  ShieldCheck
+  ShieldCheck,
+  Activity,
+  Server,
+  Lock,
+  FileCode,
+  Info
 } from 'lucide-react';
 import {
   ProviderState,
   AIRouterSettings,
   FallbackEvent,
-  ModelSpec
+  ModelSpec,
+  DeploymentDiagnostics
 } from '../types/ai_providers';
 import {
   fetchAIProviders,
@@ -40,8 +46,13 @@ import {
   testProviderApi,
   updateAIRouterSettings,
   updateProviderConfig,
-  fetchAIFallbackHistory
+  fetchAIFallbackHistory,
+  fetchAIDiagnostics
 } from '../services/api';
+import {
+  PROVIDER_OFFICIAL_LINKS,
+  getDefaultProviders
+} from '../shared/ai_providers_registry';
 
 interface AIProviderManagerProps {
   isOpen: boolean;
@@ -50,62 +61,17 @@ interface AIProviderManagerProps {
   onLogActivity?: (level: 'info' | 'warn' | 'success' | 'tool', msg: string) => void;
 }
 
-// Exact official links verified for each provider
-export const PROVIDER_OFFICIAL_LINKS: Record<string, { apiKeyUrl: string; docsUrl: string; guide: string; badgeColor: string }> = {
-  gemini: {
-    apiKeyUrl: 'https://aistudio.google.com/app/apikey',
-    docsUrl: 'https://ai.google.dev/docs',
-    guide: 'Inicia sesión con tu cuenta Google en Google AI Studio y genera tu API key gratis con 15 RPM y 1.500 RPD oficiales.',
-    badgeColor: 'from-blue-600 to-indigo-600'
-  },
-  groq: {
-    apiKeyUrl: 'https://console.groq.com/keys',
-    docsUrl: 'https://console.groq.com/docs',
-    guide: 'Accede a Groq Console, entra en API Keys y genera tu clave instantánea con velocidad ultra-rápida (30 RPM y 14.400 RPD gratis).',
-    badgeColor: 'from-amber-600 to-orange-600'
-  },
-  cerebras: {
-    apiKeyUrl: 'https://cloud.cerebras.ai/',
-    docsUrl: 'https://inference-docs.cerebras.ai/',
-    guide: 'Regístrate en Cerebras Inference Cloud y crea tu clave para inferencia en hardware wafer-scale CS-3 con 30 RPM gratis.',
-    badgeColor: 'from-emerald-600 to-teal-600'
-  },
-  openrouter: {
-    apiKeyUrl: 'https://openrouter.ai/keys',
-    docsUrl: 'https://openrouter.ai/docs',
-    guide: 'Crea tu clave en OpenRouter para usar los modelos con sufijo :free (Llama 3.3, Mistral Small, Qwen 2.5) con hasta 200 req/día gratuitas.',
-    badgeColor: 'from-purple-600 to-fuchsia-600'
-  },
-  deepseek: {
-    apiKeyUrl: 'https://platform.deepseek.com/api_keys',
-    docsUrl: 'https://platform.deepseek.com/api-docs',
-    guide: 'Inicia sesión en DeepSeek Platform, genera tu clave en API Keys y utiliza el saldo promocional para DeepSeek V3 y DeepSeek R1.',
-    badgeColor: 'from-cyan-600 to-blue-600'
-  },
-  mistral: {
-    apiKeyUrl: 'https://console.mistral.ai/api-keys/',
-    docsUrl: 'https://docs.mistral.ai/',
-    guide: 'Accede a La Plateforme de Mistral AI y genera tu clave en el tier de experimentación gratuito oficial (1 RPS).',
-    badgeColor: 'from-orange-600 to-amber-600'
-  },
-  huggingface: {
-    apiKeyUrl: 'https://huggingface.co/settings/tokens',
-    docsUrl: 'https://huggingface.co/docs/api-inference/',
-    guide: 'Ve a Settings > Access Tokens en Hugging Face y crea un User Access Token (permiso Read) para la Inference API de modelos libres.',
-    badgeColor: 'from-yellow-600 to-amber-600'
-  }
-};
-
 export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
   isOpen,
   onClose,
   onSelectActiveModel,
   onLogActivity
 }) => {
-  const [activeTab, setActiveTab] = useState<'providers' | 'router' | 'tracker' | 'matrix' | 'fallbacks'>('providers');
-  const [providers, setProviders] = useState<ProviderState[]>([]);
+  const [activeTab, setActiveTab] = useState<'providers' | 'router' | 'tracker' | 'matrix' | 'fallbacks' | 'diagnostics'>('providers');
+  const [providers, setProviders] = useState<ProviderState[]>(getDefaultProviders());
   const [settings, setSettings] = useState<AIRouterSettings | null>(null);
   const [fallbackHistory, setFallbackHistory] = useState<FallbackEvent[]>([]);
+  const [diagnostics, setDiagnostics] = useState<DeploymentDiagnostics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('gemini');
 
@@ -152,7 +118,9 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
     setIsLoading(true);
     try {
       const data = await fetchAIProviders();
-      const provList: ProviderState[] = data.providers || [];
+      const provList: ProviderState[] = (data.providers && data.providers.length > 0)
+        ? data.providers
+        : getDefaultProviders();
       setProviders(provList);
       setSettings(data.settings);
       if (provList.length > 0 && (!selectedProviderId || !provList.some(p => p.id === selectedProviderId))) {
@@ -160,8 +128,12 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
       }
       const history = await fetchAIFallbackHistory();
       setFallbackHistory(history || []);
+
+      const diag = await fetchAIDiagnostics();
+      setDiagnostics(diag);
     } catch (err: any) {
-      console.warn('Error loading providers:', err);
+      console.warn('Error loading providers, applying portable fallback:', err);
+      setProviders(getDefaultProviders());
     } finally {
       setIsLoading(false);
     }
@@ -173,11 +145,17 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
     setSaveSuccessId(null);
     try {
       const res = await saveProviderApiKey(providerId, key);
-      setProviders(res.providers || []);
+      if (res.providers && res.providers.length > 0) {
+        setProviders(res.providers);
+      }
       setEditingKeys(prev => ({ ...prev, [providerId]: '' }));
       setSaveSuccessId(providerId);
       setTimeout(() => setSaveSuccessId(null), 3500);
       if (onLogActivity) onLogActivity('success', `API Key guardada con éxito para ${providerId.toUpperCase()}.`);
+
+      // Refresh diagnostics
+      const diag = await fetchAIDiagnostics();
+      setDiagnostics(diag);
     } catch (err: any) {
       alert(`Error al guardar clave: ${err.message}`);
     } finally {
@@ -201,7 +179,9 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
       }
       // Reload providers to refresh status
       const data = await fetchAIProviders();
-      setProviders(data.providers || []);
+      if (data.providers && data.providers.length > 0) {
+        setProviders(data.providers);
+      }
     } catch (err: any) {
       setTestResult({
         id: providerId,
@@ -217,7 +197,7 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
     setUpdatingConfigId(providerId);
     try {
       const res = await updateProviderConfig(providerId, { enabled: !currentEnabled });
-      if (res.providers) setProviders(res.providers);
+      if (res.providers && res.providers.length > 0) setProviders(res.providers);
       if (onLogActivity) {
         onLogActivity('info', `Proveedor ${providerId.toUpperCase()} ${!currentEnabled ? 'habilitado' : 'deshabilitado'}.`);
       }
@@ -232,7 +212,7 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
     setUpdatingConfigId(providerId);
     try {
       const res = await updateProviderConfig(providerId, { defaultModel: modelId });
-      if (res.providers) setProviders(res.providers);
+      if (res.providers && res.providers.length > 0) setProviders(res.providers);
       if (onSelectActiveModel) {
         onSelectActiveModel(providerId, modelId);
       }
@@ -291,7 +271,7 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
   if (!isOpen) return null;
 
   const currentProvider = providers.find(p => p.id === selectedProviderId) || providers[0];
-  const officialInfo = selectedProviderId ? PROVIDER_OFFICIAL_LINKS[selectedProviderId] || PROVIDER_OFFICIAL_LINKS.gemini : PROVIDER_OFFICIAL_LINKS.gemini;
+  const officialInfo = selectedProviderId ? (PROVIDER_OFFICIAL_LINKS[selectedProviderId] || PROVIDER_OFFICIAL_LINKS.gemini) : PROVIDER_OFFICIAL_LINKS.gemini;
 
   return (
     <div className="fixed inset-0 bg-black/85 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 select-none">
@@ -309,7 +289,7 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
                   GESTOR DE PROVEEDORES DE IA
                 </h3>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-lime-950 text-lime-300 border border-lime-800/50 font-mono font-semibold">
-                  Multi-Modelo Autónomo • 7 Proveedores
+                  Multi-Modelo Autónomo • 8 Proveedores Portables
                 </span>
                 <span className="hidden md:inline-flex items-center gap-1 text-[10px] text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/40">
                   <Clock className="w-3 h-3" />
@@ -317,7 +297,7 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5 hidden xs:block">
-                Paridad total Desktop & Mobile: Configuración directa de API keys oficiales, enlaces directos, prueba de latencia y conmutación automática de cuotas gratuitas.
+                Arquitectura portable para Google AI Studio, GitHub, Vercel y Cloud Run: 8 proveedores oficiales con conmutación autónoma y tolerancia a fallos.
               </p>
             </div>
           </div>
@@ -326,7 +306,7 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
             <button
               onClick={loadData}
               disabled={isLoading}
-              title="Recargar estado de proveedores"
+              title="Recargar estado y diagnóstico"
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-[#1c2436] transition-colors"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-violet-400' : ''}`} />
@@ -352,6 +332,21 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
           >
             <Zap className="w-3.5 h-3.5 text-lime-400" />
             <span>Proveedores & Claves ({providers.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('diagnostics')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+              activeTab === 'diagnostics'
+                ? 'bg-violet-950/80 text-violet-200 font-semibold border border-violet-700/60 shadow-xs'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-[#151924]'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Diagnóstico de Despliegue</span>
+            {diagnostics && (
+              <span className={`w-2 h-2 rounded-full ${diagnostics.backendConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-ping'}`} />
+            )}
           </button>
 
           <button
@@ -440,7 +435,6 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
             <div className="lg:hidden p-2 bg-[#090c13] border-b border-[#1b2334] overflow-x-auto no-scrollbar flex items-center gap-1.5 shrink-0">
               {providers.map(p => {
                 const isSelected = p.id === selectedProviderId;
-                const links = PROVIDER_OFFICIAL_LINKS[p.id] || PROVIDER_OFFICIAL_LINKS.gemini;
                 return (
                   <button
                     key={p.id}
@@ -642,7 +636,7 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-slate-100 text-xs sm:text-sm flex items-center gap-1.5">
                       <Key className="w-4 h-4 text-violet-400" />
-                      Configuración de Clave API (Almacenamiento Cifrado en Backend)
+                      Configuración de Clave API (Almacenamiento Cifrado en Backend y Cache Portable)
                     </span>
                     {currentProvider.isConfigured && (
                       <span className="text-[10px] text-emerald-400 font-mono bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50 flex items-center gap-1">
@@ -724,7 +718,7 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1">
-                      <span>✓ Cifrada en el servidor backend (nunca expuesta en logs ni en navegador del cliente).</span>
+                      <span>✓ Cifrada en el backend (y respaldada en navegador para garantizar portabilidad en GitHub/Vercel).</span>
                       <span className="font-mono text-slate-400">Endpoint: {currentProvider.baseUrl || 'SDK Nativo'}</span>
                     </div>
                   </div>
@@ -888,6 +882,217 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
 
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB: DEPLOYMENT DIAGNOSTICS */}
+        {activeTab === 'diagnostics' && (
+          <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-4 bg-[#0d1017]">
+            {/* Diagnostics Header Banner */}
+            <div className="p-4 rounded-xl bg-[#121623] border border-[#222c40] space-y-3 shadow-md">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-cyan-600 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+                    <Server className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-100 text-sm sm:text-base flex items-center gap-2">
+                      <span>PANEL DE DIAGNÓSTICO DE DESPLIEGUE</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                        diagnostics?.backendConnected
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          : 'bg-amber-950 text-amber-300 border border-amber-800'
+                      }`}>
+                        {diagnostics?.backendConnected ? 'Backend Activo & Conectado' : 'Modo Standalone Portable'}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Verificación en tiempo real del estado de los proveedores, variables de entorno y compatibilidad con GitHub, Vercel y Cloud Run.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={async () => {
+                    setIsLoading(true);
+                    const d = await fetchAIDiagnostics();
+                    setDiagnostics(d);
+                    setIsLoading(false);
+                  }}
+                  disabled={isLoading}
+                  className="px-3.5 py-1.5 rounded-lg bg-[#192233] hover:bg-[#232f47] border border-[#2b3a54] text-slate-200 text-xs flex items-center gap-1.5 self-start sm:self-center transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                  <span>Re-evaluar Entorno</span>
+                </button>
+              </div>
+
+              {/* Status Overview Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 pt-2 border-t border-[#1c2438]">
+                <div className="p-3 rounded-lg bg-[#0a0d14] border border-[#1b2436] space-y-1">
+                  <span className="text-slate-500 text-[10px] uppercase font-mono block">Entorno Detectado:</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span className="font-bold text-slate-200 capitalize">
+                      {diagnostics?.environment || 'Production'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block truncate">
+                    {diagnostics?.deploymentPlatform || 'Node.js Express'}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-[#0a0d14] border border-[#1b2436] space-y-1">
+                  <span className="text-slate-500 text-[10px] uppercase font-mono block">Registro Central:</span>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-lime-400" />
+                    <span className="font-bold text-lime-300">
+                      {diagnostics?.totalRegisteredProviders || providers.length} Proveedores
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block">
+                    100% Portables en Desktop & Mobile
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-[#0a0d14] border border-[#1b2436] space-y-1">
+                  <span className="text-slate-500 text-[10px] uppercase font-mono block">Claves Configuradas:</span>
+                  <div className="flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-violet-400" />
+                    <span className="font-bold text-violet-300">
+                      {diagnostics?.configuredProvidersCount ?? providers.filter(p => p.isConfigured).length} de {diagnostics?.totalRegisteredProviders || providers.length}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block">
+                    {providers.filter(p => p.isConfigured).length > 0 ? 'Listas para inferencia' : 'Requieren ingreso de clave'}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-[#0a0d14] border border-[#1b2436] space-y-1">
+                  <span className="text-slate-500 text-[10px] uppercase font-mono block">Estado de Conexión:</span>
+                  <div className="flex items-center gap-1.5">
+                    {diagnostics?.backendConnected ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                    )}
+                    <span className={`font-bold ${diagnostics?.backendConnected ? 'text-emerald-300' : 'text-amber-300'}`}>
+                      {diagnostics?.backendConnected ? 'API OK (200)' : 'Modo Standalone'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block">
+                    {diagnostics?.backendConnected ? 'Proxy seguro activo' : 'Cache local activa'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Environment Variables Checklist (Safe inspection without exposing secrets) */}
+            <div className="p-4 rounded-xl bg-[#121622] border border-[#232d42] space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-semibold text-slate-100 text-xs sm:text-sm flex items-center gap-1.5">
+                    <Lock className="w-4 h-4 text-cyan-400" />
+                    Auditoría de Variables de Entorno del Servidor
+                  </h4>
+                  <span className="text-[10px] text-slate-400">
+                    Las claves configuradas en el entorno se detectan de forma segura sin revelar los valores secretos.
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  Auditoría: {new Date(diagnostics?.diagnosticTimestamp || Date.now()).toLocaleTimeString()}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {[
+                  { name: 'GEMINI_API_KEY', provider: 'Google Gemini' },
+                  { name: 'GROQ_API_KEY', provider: 'Groq LPU' },
+                  { name: 'CEREBRAS_API_KEY', provider: 'Cerebras' },
+                  { name: 'OPENROUTER_API_KEY', provider: 'OpenRouter' },
+                  { name: 'DEEPSEEK_API_KEY', provider: 'DeepSeek' },
+                  { name: 'MISTRAL_API_KEY', provider: 'Mistral AI' },
+                  { name: 'QWEN_API_KEY', provider: 'Qwen DashScope' },
+                  { name: 'HUGGINGFACE_API_KEY', provider: 'Hugging Face' }
+                ].map(env => {
+                  const isDetected = diagnostics?.detectedEnvironmentVariables.includes(env.name);
+                  const prov = providers.find(p => p.id === env.provider.toLowerCase().split(' ')[0]) || providers.find(p => env.name.toLowerCase().includes(p.id));
+                  const hasCustom = prov?.hasCustomKey;
+
+                  return (
+                    <div
+                      key={env.name}
+                      className={`p-2.5 rounded-lg border text-xs space-y-1 ${
+                        isDetected || hasCustom
+                          ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-200'
+                          : 'bg-[#0d1017] border-[#1e2538] text-slate-400'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[11px] font-bold truncate">{env.name}</span>
+                        <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-mono font-bold ${
+                          isDetected || hasCustom
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {isDetected ? 'En Servidor' : hasCustom ? 'Web Key' : 'No Definida'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block truncate">{env.provider}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Deployment Recommendations & Troubleshooting Guide */}
+            <div className="p-4 rounded-xl bg-[#121622] border border-[#232d42] space-y-3">
+              <h4 className="font-semibold text-slate-100 text-xs sm:text-sm flex items-center gap-1.5">
+                <FileCode className="w-4 h-4 text-violet-400" />
+                Guía de Despliegue en Producción (GitHub / Vercel / Cloud Run / Docker)
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-slate-300">
+                <div className="p-3 rounded-lg bg-[#0a0d14] border border-[#1d2638] space-y-2">
+                  <div className="flex items-center gap-1.5 text-violet-300 font-bold">
+                    <span>1. Despliegue en Vercel (Automático con GitHub)</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-slate-400">
+                    <li>Conecta tu repositorio de GitHub a tu cuenta de Vercel.</li>
+                    <li>Vercel construirá automáticamente el frontend Vite mediante <code className="text-lime-300">npm run build</code>.</li>
+                    <li>Ve a <strong>Project Settings &gt; Environment Variables</strong> y añade tus claves (ej. <code className="text-cyan-300">GEMINI_API_KEY</code>, <code className="text-cyan-300">GROQ_API_KEY</code>).</li>
+                    <li>Las rutas <code className="text-violet-300">/api/*</code> están configuradas en el archivo <code className="text-lime-300">vercel.json</code>.</li>
+                  </ul>
+                </div>
+
+                <div className="p-3 rounded-lg bg-[#0a0d14] border border-[#1d2638] space-y-2">
+                  <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
+                    <span>2. Despliegue en Docker, Cloud Run o Railway</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-slate-400">
+                    <li>El comando de arranque de producción es <code className="text-lime-300">npm start</code> (ejecuta el servidor Express con Vite integrado).</li>
+                    <li>El puerto se toma dinámicamente de <code className="text-cyan-300">process.env.PORT</code> o por defecto en el puerto 3000.</li>
+                    <li>Copia el archivo <code className="text-lime-300">.env.example</code> a <code className="text-lime-300">.env</code> o inyecta las variables en tu orquestador.</li>
+                    <li>Los 8 proveedores cargan del registro compartido incluso si no configuras claves en el servidor.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {diagnostics?.warnings && diagnostics.warnings.length > 0 && (
+                <div className="p-3 rounded-lg bg-amber-950/25 border border-amber-800/40 text-amber-200 text-xs space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-amber-300">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Avisos de Configuración:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 text-amber-200/90 text-[11px]">
+                    {diagnostics.warnings.map((w, idx) => (
+                      <li key={idx}>{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
           </div>
         )}
 
@@ -1226,7 +1431,7 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
         <div className="p-3.5 bg-[#111520] border-t border-[#1c2436] flex items-center justify-between shrink-0 text-xs">
           <div className="flex items-center gap-2 text-slate-400 text-[11px]">
             <span className="w-2.5 h-2.5 rounded-full bg-lime-400 animate-pulse" />
-            <span>Enrutador Free-First activo • Google Gemini, Groq, Cerebras, OpenRouter, DeepSeek, Mistral, Hugging Face</span>
+            <span>Enrutador Free-First activo • Google Gemini, Groq, Cerebras, OpenRouter, DeepSeek, Mistral, Qwen, Hugging Face</span>
           </div>
           <button
             onClick={onClose}

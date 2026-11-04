@@ -33,7 +33,7 @@ export interface QuotaPolicy {
 export interface ProviderState {
   id: string;
   name: string;
-  type: 'gemini' | 'groq' | 'cerebras' | 'openrouter' | 'deepseek' | 'mistral' | 'huggingface' | 'local';
+  type: 'gemini' | 'groq' | 'cerebras' | 'openrouter' | 'deepseek' | 'mistral' | 'huggingface' | 'qwen' | 'local';
   baseUrl?: string;
   apiKeyUrl?: string;
   docsUrl?: string;
@@ -55,7 +55,7 @@ export interface ProviderState {
 
 export interface AIRouterSettings {
   mode: 'free_first' | 'free_only' | 'manual' | 'custom_priority';
-  priorityOrder: string[]; // ['gemini', 'groq', 'cerebras', 'openrouter', 'deepseek', 'mistral', 'huggingface']
+  priorityOrder: string[]; // ['gemini', 'groq', 'cerebras', 'openrouter', 'mistral', 'deepseek', 'qwen', 'huggingface']
   taskMapping: {
     writing: { provider: string; model: string };
     research: { provider: string; model: string };
@@ -76,3 +76,21 @@ export interface FallbackEvent {
   reason: string;
   projectId: string;
 }
+
+export interface DeploymentDiagnostics {
+  environment: 'development' | 'production';
+  backendConnected: boolean;
+  deploymentPlatform: string;
+  registryLoaded: boolean;
+  totalRegisteredProviders: number;
+  configuredProvidersCount: number;
+  configuredProviderIds: string[];
+  missingEnvironmentVariables: string[];
+  detectedEnvironmentVariables: string[];
+  lastProviderError?: string;
+  hasServerGeminiKey: boolean;
+  diagnosticTimestamp: string;
+  warnings: string[];
+  deploymentRecommendations: string[];
+}
+

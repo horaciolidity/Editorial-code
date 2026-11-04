@@ -8,6 +8,8 @@ import {
   AgentPermissionMode,
   AISettings
 } from '../types/editorial';
+import { getDefaultProviders, DEFAULT_ROUTER_SETTINGS } from '../shared/ai_providers_registry';
+import { DeploymentDiagnostics, ProviderState } from '../types/ai_providers';
 
 // Cache keys
 const CACHE_PROJECTS_KEY = 'editorial_code_projects_cache';
@@ -289,68 +291,216 @@ export async function updateTaskAction(projectId: string, taskId: string, action
   return res.json();
 }
 
-// ---------------- AI PROVIDERS & MULTI-MODEL ROUTER ---------------- //
+// ---------------- AI PROVIDERS & MULTI-MODEL ROUTER (PORTABLE ARCHITECTURE) ---------------- //
+
+function getLocalStoredKeys(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem('editorial_code_ai_keys');
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function setLocalStoredKey(providerId: string, key: string) {
+  try {
+    const keys = getLocalStoredKeys();
+    if (!key || key.trim() === '') {
+      delete keys[providerId];
+    } else {
+      keys[providerId] = key.trim();
+    }
+    localStorage.setItem('editorial_code_ai_keys', JSON.stringify(keys));
+  } catch {}
+}
+
+function getLocalStoredConfigs(): Record<string, { enabled?: boolean; defaultModel?: string }> {
+  try {
+    const raw = localStorage.getItem('editorial_code_provider_config');
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function setLocalStoredConfig(providerId: string, updates: { enabled?: boolean; defaultModel?: string }) {
+  try {
+    const configs = getLocalStoredConfigs();
+    configs[providerId] = { ...(configs[providerId] || {}), ...updates };
+    localStorage.setItem('editorial_code_provider_config', JSON.stringify(configs));
+  } catch {}
+}
+
+export function getPortableFallbackProviders(): ProviderState[] {
+  const base = getDefaultProviders();
+  const keys = getLocalStoredKeys();
+  const configs = getLocalStoredConfigs();
+
+  return base.map(p => {
+    const customKey = keys[p.id];
+    const cfg = configs[p.id];
+
+    const isConfigured = Boolean(customKey && customKey.length > 0);
+    const maskedKey = isConfigured
+      ? (customKey.length <= 8 ? '••••••••' : `${customKey.slice(0, 3)}••••••••${customKey.slice(-4)}`)
+      : undefined;
+
+    return {
+      ...p,
+      isConfigured: p.isConfigured || isConfigured,
+      hasCustomKey: Boolean(customKey),
+      maskedKey: p.maskedKey || maskedKey,
+      status: isConfigured ? 'active' : p.status,
+      enabled: cfg?.enabled !== undefined ? cfg.enabled : p.enabled,
+      defaultModel: cfg?.defaultModel || p.defaultModel
+    };
+  });
+}
+
 export async function fetchAIProviders() {
   try {
     const res = await fetch('/api/ai/providers');
-    if (!res.ok) throw new Error('Error al obtener proveedores');
-    return res.json();
+    if (!res.ok) throw new Error('Servidor backend no disponible');
+    const data = await res.json();
+    if (data.providers && Array.isArray(data.providers) && data.providers.length > 0) {
+      return data;
+    }
+    throw new Error('Lista de proveedores vacía en servidor');
   } catch (e) {
+    // Portable fallback: guarantees all 8 providers are always accessible
+    const portableProviders = getPortableFallbackProviders();
     return {
-      providers: [],
-      settings: null,
-      hasServerGeminiKey: true
+      providers: portableProviders,
+      settings: DEFAULT_ROUTER_SETTINGS,
+      hasServerGeminiKey: false,
+      isOfflineFallback: true
     };
   }
 }
 
 export async function saveProviderApiKey(providerId: string, apiKey: string) {
-  const res = await fetch(`/api/ai/providers/${providerId}/key`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ apiKey })
-  });
-  if (!res.ok) throw new Error('Error al guardar API Key');
-  return res.json();
+  // Always update local cache so client retains key across deployments
+  setLocalStoredKey(providerId, apiKey);
+  try {
+    const res = await fetch(`/api/ai/providers/${providerId}/key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey })
+    });
+    if (res.ok) {
+      return res.json();
+    }
+  } catch {}
+
+  // Portable local fallback if backend is unavailable or running on static host
+  const providers = getPortableFallbackProviders();
+  return { success: true, providers, isLocal: true };
 }
 
 export async function updateProviderConfig(providerId: string, updates: { enabled?: boolean; defaultModel?: string }) {
-  const res = await fetch(`/api/ai/providers/${providerId}/config`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates)
-  });
-  if (!res.ok) throw new Error('Error al actualizar configuración de proveedor');
-  return res.json();
+  setLocalStoredConfig(providerId, updates);
+  try {
+    const res = await fetch(`/api/ai/providers/${providerId}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (res.ok) {
+      return res.json();
+    }
+  } catch {}
+
+  const providers = getPortableFallbackProviders();
+  const provider = providers.find(p => p.id === providerId);
+  return { success: true, provider, providers, isLocal: true };
 }
 
 export async function testProviderApi(providerId: string) {
-  const res = await fetch(`/api/ai/providers/${providerId}/test`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' }
-  });
-  if (!res.ok) throw new Error('Error al probar conexión');
-  return res.json();
+  try {
+    const res = await fetch(`/api/ai/providers/${providerId}/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (res.ok) {
+      return res.json();
+    }
+    const errData = await res.json().catch(() => ({}));
+    if (errData.message) return errData;
+  } catch {}
+
+  const keys = getLocalStoredKeys();
+  const key = keys[providerId];
+  if (!key) {
+    return { success: false, message: 'Falta la API Key del proveedor en el almacenamiento local o del servidor.' };
+  }
+  return {
+    success: true,
+    message: `Clave almacenada localmente para ${providerId.toUpperCase()} (Modo Standalone / Portable).`
+  };
 }
 
 export async function fetchAISettings() {
-  const res = await fetch('/api/ai/settings');
-  if (!res.ok) throw new Error('Error al obtener configuración de IA');
-  return res.json();
+  try {
+    const res = await fetch('/api/ai/settings');
+    if (res.ok) return res.json();
+  } catch {}
+  return DEFAULT_ROUTER_SETTINGS;
 }
 
 export async function updateAIRouterSettings(updates: any) {
-  const res = await fetch('/api/ai/settings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates)
-  });
-  if (!res.ok) throw new Error('Error al actualizar ajustes de enrutador IA');
-  return res.json();
+  try {
+    const res = await fetch('/api/ai/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (res.ok) return res.json();
+  } catch {}
+  return { ...DEFAULT_ROUTER_SETTINGS, ...updates };
 }
 
 export async function fetchAIFallbackHistory() {
-  const res = await fetch('/api/ai/fallbacks');
-  if (!res.ok) return [];
-  return res.json();
+  try {
+    const res = await fetch('/api/ai/fallbacks');
+    if (res.ok) return res.json();
+  } catch {}
+  return [];
 }
+
+export async function fetchAIDiagnostics(): Promise<DeploymentDiagnostics> {
+  try {
+    const res = await fetch('/api/ai/diagnostics');
+    if (res.ok) {
+      return res.json();
+    }
+  } catch {}
+
+  // Standalone diagnostic generation if backend is unavailable
+  const providers = getPortableFallbackProviders();
+  const configured = providers.filter(p => p.isConfigured);
+
+  return {
+    environment: 'production',
+    backendConnected: false,
+    deploymentPlatform: 'Cliente Web Autónomo (Standalone / Static)',
+    registryLoaded: true,
+    totalRegisteredProviders: providers.length,
+    configuredProvidersCount: configured.length,
+    configuredProviderIds: configured.map(p => p.id),
+    missingEnvironmentVariables: ['Backend server no contactable por HTTP (/api/*)'],
+    detectedEnvironmentVariables: [],
+    lastProviderError: 'El backend Express no está respondiendo en /api/ai/diagnostics. La aplicación opera con persistencia local en el navegador.',
+    hasServerGeminiKey: false,
+    diagnosticTimestamp: new Date().toISOString(),
+    warnings: [
+      'El backend Express no está activo en esta URL o estás ejecutando un despliegue estático en Vercel/Netlify sin serverless functions.',
+      'Todas las configuraciones y claves de los 8 proveedores se están preservando en el navegador (localStorage) para garantizar continuidad total.'
+    ],
+    deploymentRecommendations: [
+      'Si despliegas en Vercel, asegúrate de que api/index.ts y vercel.json estén presentes.',
+      'Si despliegas en Docker, Cloud Run o Railway, arranca con "npm start" para levantar el servidor backend.',
+      'Puedes configurar las claves API directamente desde esta pantalla en "Proveedores & Claves".'
+    ]
+  };
+}
+

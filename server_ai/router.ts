@@ -5,7 +5,8 @@ import { GoogleGenAI } from '@google/genai';
 import {
   ProviderState,
   AIRouterSettings,
-  FallbackEvent
+  FallbackEvent,
+  DeploymentDiagnostics
 } from '../src/types/ai_providers';
 import {
   INITIAL_PROVIDERS_CONFIG,
@@ -92,7 +93,8 @@ export class AIRouterManager {
       openrouter: process.env.OPENROUTER_API_KEY,
       deepseek: process.env.DEEPSEEK_API_KEY,
       mistral: process.env.MISTRAL_API_KEY,
-      huggingface: process.env.HUGGINGFACE_API_KEY
+      qwen: process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY,
+      huggingface: process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN
     };
 
     for (const [providerId, envKey] of Object.entries(envMappings)) {
@@ -140,7 +142,10 @@ export class AIRouterManager {
   }
 
   public getKey(providerId: string): string | undefined {
-    return this.credentials[providerId] || process.env[`${providerId.toUpperCase()}_API_KEY`];
+    if (this.credentials[providerId]) return this.credentials[providerId];
+    if (providerId === 'qwen') return process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
+    if (providerId === 'huggingface') return process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN;
+    return process.env[`${providerId.toUpperCase()}_API_KEY`];
   }
 
   public setKey(providerId: string, apiKey: string) {
@@ -183,6 +188,61 @@ export class AIRouterManager {
 
   public getFallbackHistory(): FallbackEvent[] {
     return this.fallbackHistory.slice(-50);
+  }
+
+  public getDeploymentDiagnostics(): DeploymentDiagnostics {
+    const envVars = [
+      { key: 'GEMINI_API_KEY', set: Boolean(process.env.GEMINI_API_KEY) },
+      { key: 'GROQ_API_KEY', set: Boolean(process.env.GROQ_API_KEY) },
+      { key: 'CEREBRAS_API_KEY', set: Boolean(process.env.CEREBRAS_API_KEY) },
+      { key: 'OPENROUTER_API_KEY', set: Boolean(process.env.OPENROUTER_API_KEY) },
+      { key: 'DEEPSEEK_API_KEY', set: Boolean(process.env.DEEPSEEK_API_KEY) },
+      { key: 'MISTRAL_API_KEY', set: Boolean(process.env.MISTRAL_API_KEY) },
+      { key: 'QWEN_API_KEY', set: Boolean(process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY) },
+      { key: 'HUGGINGFACE_API_KEY', set: Boolean(process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN) },
+    ];
+
+    const detectedEnvVars = envVars.filter(e => e.set).map(e => e.key);
+    const missingEnvVars = envVars.filter(e => !e.set).map(e => e.key);
+    
+    const configuredProviders = Array.from(this.providers.values()).filter(p => p.isConfigured);
+    const totalProviders = this.providers.size;
+
+    const isVercel = Boolean(process.env.VERCEL);
+    const isCloudRun = Boolean(process.env.K_SERVICE);
+    const platform = isVercel ? 'Vercel Serverless' : isCloudRun ? 'Google Cloud Run' : `Node.js (${process.env.NODE_ENV || 'production'})`;
+
+    const warnings: string[] = [];
+    if (configuredProviders.length === 0) {
+      warnings.push('Ningún proveedor tiene API key configurada todavía. Puedes configurar tus claves en la pestaña "Proveedores & Claves" o en las variables de entorno del servidor.');
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      warnings.push('GEMINI_API_KEY no detectada en process.env. Si despliegas en Vercel, Render o Railway, añade tus claves en las Environment Variables del hosting.');
+    }
+
+    const recommendations: string[] = [
+      'Al exportar a GitHub, nunca subas archivos con claves reales (.env está ignorado correctamente).',
+      'Configura GEMINI_API_KEY, GROQ_API_KEY, etc. en el panel de variables de entorno de tu proveedor de hosting (Vercel, Render, Railway, Cloud Run).',
+      'Las claves introducidas por la interfaz se guardan cifradas en el servidor backend (y en modo offline se preservan en localStorage para no perder acceso).',
+      'El sistema de fallback conmuta automáticamente a Groq, Cerebras, OpenRouter, Mistral, DeepSeek, Qwen o Hugging Face si un proveedor satura su cuota.'
+    ];
+
+    return {
+      environment: (process.env.NODE_ENV === 'production' ? 'production' : 'development') as 'production' | 'development',
+      backendConnected: true,
+      deploymentPlatform: platform,
+      registryLoaded: totalProviders > 0,
+      totalRegisteredProviders: totalProviders,
+      configuredProvidersCount: configuredProviders.length,
+      configuredProviderIds: configuredProviders.map(p => p.id),
+      missingEnvironmentVariables: missingEnvVars,
+      detectedEnvironmentVariables: detectedEnvVars,
+      lastProviderError: Array.from(this.providers.values()).find(p => p.lastErrorMessage)?.lastErrorMessage,
+      hasServerGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+      diagnosticTimestamp: new Date().toISOString(),
+      warnings,
+      deploymentRecommendations: recommendations
+    };
   }
 
   private saveStats() {

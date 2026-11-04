@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '15mb' }));
 
@@ -768,6 +768,16 @@ app.get('/api/ai/fallbacks', (req: Request, res: Response) => {
   res.json(aiRouter.getFallbackHistory());
 });
 
+// GET /api/ai/diagnostics - Deployment diagnostics and environment report
+app.get('/api/ai/diagnostics', (req: Request, res: Response) => {
+  try {
+    const diag = aiRouter.getDeploymentDiagnostics();
+    res.json(diag);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // GET /api/tasks
 app.get('/api/projects/:id/tasks', (req: Request, res: Response) => {
@@ -1374,6 +1384,11 @@ async function startServer() {
   });
 }
 
-startServer().catch(err => {
-  console.error('Failed to start server:', err);
-});
+if (!process.env.VERCEL) {
+  startServer().catch(err => {
+    console.error('Failed to start server:', err);
+  });
+}
+
+export default app;
+export { app };
