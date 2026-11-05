@@ -12,7 +12,7 @@ export type BookGenre =
   | 'enciclopedia'
   | 'divulgacion_autoayuda';
 
-export type BookType = 'novela' | 'cuentos' | 'ensayo' | 'manual' | 'guia' | 'biografia' | 'antologia' | 'obra_tecnica';
+export type BookType = 'novela' | 'cuentos' | 'comic' | 'serie' | 'ensayo' | 'manual' | 'guia' | 'biografia' | 'antologia' | 'obra_tecnica';
 
 export type SpecialistRole =
   | 'director'

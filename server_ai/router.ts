@@ -513,7 +513,10 @@ export class AIRouterManager {
         body: JSON.stringify({
           model: modelId,
           messages: [
-            { role: 'system', content: `${systemPrompt}\n\nIMPORTANTE: Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido según las instrucciones sin formato markdown adicional.` },
+            {
+              role: 'system',
+              content: `${systemPrompt}\n\nIMPORTANTE: Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido según las instrucciones sin formato markdown adicional. NO invoques herramientas nativas (tool_calls / function calling).`
+            },
             { role: 'user', content: userPrompt }
           ],
           response_format: { type: 'json_object' },
@@ -523,6 +526,23 @@ export class AIRouterManager {
 
       if (!res.ok) {
         const errText = await res.text();
+        if (res.status === 400 && errText.includes('tool_use_failed')) {
+          try {
+            const errJson = JSON.parse(errText);
+            const failedGen = errJson?.error?.failed_generation;
+            if (failedGen) {
+              const fg = JSON.parse(failedGen);
+              if (fg && fg.name) {
+                return {
+                  reply: `Ejecutando herramienta ${fg.name}...`,
+                  toolCalls: [{ toolName: fg.name, args: fg.arguments || {} }]
+                };
+              }
+            }
+          } catch {
+            // Fall through to throw original error
+          }
+        }
         throw new Error(`HTTP ${res.status}: ${errText}`);
       }
 

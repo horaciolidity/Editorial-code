@@ -102,6 +102,79 @@ export async function createProject(data: Partial<Project>): Promise<Project> {
   return project;
 }
 
+export async function autoGenerateProject(params: {
+  bookType: string;
+  title?: string;
+  instructions?: string;
+  language?: string;
+  targetWords?: number;
+  author?: string;
+}): Promise<{ project: Project; files: ProjectFile[]; generatedWithAI: boolean; providerUsed?: string }> {
+  const res = await fetch('/api/projects/auto-generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Error al generar proyecto automáticamente');
+  }
+  const data = await res.json();
+  const cached = getCachedProjects();
+  cached.unshift(data.project);
+  setCachedProjects(cached);
+  setCachedFiles(data.project.id, data.files || []);
+  return data;
+}
+
+export async function reorderProjectFiles(projectId: string, orderedFileIds: string[]): Promise<ProjectFile[]> {
+  const res = await fetch(`/api/projects/${projectId}/files/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedFileIds })
+  });
+  if (!res.ok) throw new Error('Error al reordenar capítulos');
+  const files: ProjectFile[] = await res.json();
+  setCachedFiles(projectId, files);
+  return files;
+}
+
+export async function regenerateIllustration(
+  projectId: string,
+  payload: { illustrationId?: string; type: 'cover' | 'back_cover' | 'illustration'; title: string; prompt?: string }
+): Promise<{ project: Project; illustration: any }> {
+  const res = await fetch(`/api/projects/${projectId}/illustrations/regenerate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error('Error al regenerar arte');
+  const data = await res.json();
+  const cached = getCachedProjects();
+  const idx = cached.findIndex(p => p.id === projectId);
+  if (idx >= 0) cached[idx] = data.project;
+  setCachedProjects(cached);
+  return data;
+}
+
+export async function rewriteContentWithAI(params: {
+  projectId: string;
+  fileId?: string;
+  content: string;
+  instruction?: string;
+}): Promise<{ content: string; provider?: string }> {
+  const res = await fetch('/api/ai/rewrite', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Error al reescribir con IA');
+  }
+  return res.json();
+}
+
 export async function updateProject(id: string, updates: Partial<Project>): Promise<Project> {
   try {
     const res = await fetch(`/api/projects/${id}`, {

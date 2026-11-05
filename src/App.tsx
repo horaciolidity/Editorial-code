@@ -13,6 +13,7 @@ import {
   fetchProject,
   createProject,
   updateProject,
+  deleteProject,
   fetchFiles,
   createFile,
   updateFile,
@@ -24,7 +25,11 @@ import {
   createProjectTask,
   updateTaskAction,
   isOnline as checkIsOnline,
-  fetchAISettings
+  fetchAISettings,
+  autoGenerateProject,
+  reorderProjectFiles,
+  regenerateIllustration,
+  rewriteContentWithAI
 } from './services/api';
 import { Header } from './components/Header';
 import { Sidebar, SidebarTab } from './components/Sidebar';
@@ -248,6 +253,125 @@ export default function App() {
       setMobileActiveView('editor');
     } catch (err: any) {
       addLog('warn', `Error creando capítulo: ${err.message}`);
+    }
+  };
+
+  // Autonomous full project generation
+  const handleAutoGenerateProject = async (params: {
+    bookType: string;
+    title?: string;
+    instructions?: string;
+    language?: string;
+    author?: string;
+  }) => {
+    try {
+      addLog('info', `Iniciando generación autónoma de proyecto (${params.bookType})...`);
+      const result = await autoGenerateProject(params);
+      setProjects(prev => [result.project, ...prev]);
+      setCurrentProjectId(result.project.id);
+      setCurrentProject(result.project);
+      setFiles(result.files || []);
+      const firstChapter = (result.files || []).find(f => f.type === 'chapter') || result.files?.[0] || null;
+      setSelectedFileId(firstChapter?.id || null);
+      setSelectedFile(firstChapter);
+      setMobileActiveView('editor');
+      addLog(
+        'success',
+        `Obra "${result.project.title}" generada (${result.files.length} archivos, ${result.project.illustrations?.length || 0} artes)`
+      );
+    } catch (err: any) {
+      addLog('warn', `Error en generación autónoma: ${err.message}`);
+      throw err;
+    }
+  };
+
+  // Delete project
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      await deleteProject(projectId);
+      const remaining = projects.filter(p => p.id !== projectId);
+      setProjects(remaining);
+      if (currentProjectId === projectId) {
+        if (remaining.length > 0) {
+          await selectProject(remaining[0].id);
+        } else {
+          setCurrentProjectId(null);
+          setCurrentProject(null);
+          setFiles([]);
+          setSelectedFileId(null);
+          setSelectedFile(null);
+        }
+      }
+      addLog('tool', 'Proyecto eliminado correctamente');
+    } catch (err: any) {
+      addLog('warn', `Error al eliminar proyecto: ${err.message}`);
+    }
+  };
+
+  // Reorder chapters/files
+  const handleReorderFiles = async (orderedFileIds: string[]) => {
+    if (!currentProjectId) return;
+    try {
+      const updated = await reorderProjectFiles(currentProjectId, orderedFileIds);
+      setFiles(updated);
+      addLog('tool', 'Orden de capítulos actualizado');
+    } catch (err: any) {
+      addLog('warn', `Error al reordenar capítulos: ${err.message}`);
+    }
+  };
+
+  // Regenerate cover or illustration
+  const handleRegenerateIllustration = async (payload: {
+    illustrationId?: string;
+    type: 'cover' | 'back_cover' | 'illustration';
+    title: string;
+    prompt?: string;
+  }) => {
+    if (!currentProjectId) return;
+    try {
+      const res = await regenerateIllustration(currentProjectId, payload);
+      setCurrentProject(res.project);
+      setProjects(prev => prev.map(p => (p.id === res.project.id ? res.project : p)));
+      addLog('tool', `Arte regenerado: "${payload.title}"`);
+    } catch (err: any) {
+      addLog('warn', `Error al regenerar arte: ${err.message}`);
+    }
+  };
+
+  // Rewrite chapter content with AI
+  const handleRewriteContent = async (content: string, instruction: string): Promise<string | null> => {
+    if (!currentProjectId) return null;
+    try {
+      const res = await rewriteContentWithAI({
+        projectId: currentProjectId,
+        fileId: selectedFileId || undefined,
+        content,
+        instruction
+      });
+      addLog('success', `Capítulo reescrito con IA (${res.provider || 'router'})`);
+      return res.content;
+    } catch (err: any) {
+      addLog('warn', `Error al reescribir con IA: ${err.message}`);
+      return null;
+    }
+  };
+
+  // Generate illustration for current chapter
+  const handleGenerateChapterImage = async (chapterTitle: string): Promise<string | null> => {
+    if (!currentProjectId) return null;
+    try {
+      const res = await regenerateIllustration(currentProjectId, {
+        type: 'illustration',
+        title: `Ilustración: ${chapterTitle}`,
+        prompt: `Escena ilustrada para ${chapterTitle} de ${currentProject?.title || 'la obra'}`
+      });
+      setCurrentProject(res.project);
+      setProjects(prev => prev.map(p => (p.id === res.project.id ? res.project : p)));
+      addLog('tool', `Ilustración generada para "${chapterTitle}"`);
+      return res.illustration?.imageUrl || null;
+    } catch (err: any) {
+      addLog('warn', `Error al generar ilustración: ${err.message}`);
+      return null;
     }
   };
 
@@ -476,6 +600,7 @@ export default function App() {
         projects={projects}
         currentProject={currentProject}
         onSelectProject={selectProject}
+        onDeleteProject={handleDeleteProject}
         onOpenNewProjectWizard={() => setWizardOpen(true)}
         files={files}
         isOnline={isOnline}
@@ -512,6 +637,8 @@ export default function App() {
               permissionMode={permissionMode}
               onChangePermissionMode={setPermissionMode}
               onUpdateProject={handleUpdateProject}
+              onReorderFiles={handleReorderFiles}
+              onRegenerateIllustration={handleRegenerateIllustration}
               isMobile={false}
               onOpenAIManager={() => setAiManagerOpen(true)}
             />
@@ -523,6 +650,8 @@ export default function App() {
             onSaveContent={handleSaveContent}
             onRollbackVersion={handleRollbackVersion}
             onAskAgentToEdit={inst => handleSendMessage(inst)}
+            onRewriteContent={handleRewriteContent}
+            onGenerateImage={handleGenerateChapterImage}
           />
 
           {/* Right Autonomous Agent Panel */}
@@ -560,6 +689,8 @@ export default function App() {
               permissionMode={permissionMode}
               onChangePermissionMode={setPermissionMode}
               onUpdateProject={handleUpdateProject}
+              onReorderFiles={handleReorderFiles}
+              onRegenerateIllustration={handleRegenerateIllustration}
               isMobile={true}
               onOpenAIManager={() => setAiManagerOpen(true)}
             />
@@ -571,6 +702,8 @@ export default function App() {
               onSaveContent={handleSaveContent}
               onRollbackVersion={handleRollbackVersion}
               onAskAgentToEdit={inst => handleSendMessage(inst)}
+              onRewriteContent={handleRewriteContent}
+              onGenerateImage={handleGenerateChapterImage}
               onOpenMobileSidebar={() => setMobileActiveView('files')}
             />
           )}
@@ -691,6 +824,7 @@ export default function App() {
         isOpen={wizardOpen}
         onClose={() => setWizardOpen(false)}
         onCreateProject={handleCreateProjectFromWizard}
+        onAutoGenerateProject={handleAutoGenerateProject}
       />
 
       {/* AI Provider Manager Modal (Multi-Provider & Fallback Engine) */}

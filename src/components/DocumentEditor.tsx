@@ -12,7 +12,11 @@ import {
   Quote,
   Check,
   BookOpen,
-  History
+  History,
+  Undo2,
+  Redo2,
+  Wand2,
+  ImagePlus
 } from 'lucide-react';
 import { ProjectFile, FileVersion } from '../types/editorial';
 import { VersionDiffViewer } from './VersionDiffViewer';
@@ -23,6 +27,8 @@ interface DocumentEditorProps {
   onSaveContent: (content: string, createVersion?: boolean, summary?: string) => Promise<void>;
   onRollbackVersion: (fileId: string, versionNumber: number) => Promise<void>;
   onAskAgentToEdit: (instruction: string) => void;
+  onRewriteContent?: (content: string, instruction: string) => Promise<string | null>;
+  onGenerateImage?: (chapterTitle: string) => Promise<string | null>;
   onOpenMobileSidebar?: () => void;
 }
 
@@ -31,9 +37,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   onSaveContent,
   onRollbackVersion,
   onAskAgentToEdit,
+  onRewriteContent,
+  onGenerateImage,
   onOpenMobileSidebar
 }) => {
   const [content, setContent] = useState('');
+  const [history, setHistory] = useState<string[]>(['']);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [isGeneratingImg, setIsGeneratingImg] = useState(false);
   const [mode, setMode] = useState<'editor' | 'preview' | 'diff'>('editor');
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
@@ -47,17 +59,17 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
   useEffect(() => {
     if (file) {
-      setContent(file.content || '');
+      const initial = file.content || '';
+      setContent(initial);
+      setHistory([initial]);
+      setHistoryIndex(0);
       setMode('editor');
       setSelectedVersionForDiff(null);
     }
   }, [file?.id]);
 
-  // Handle local changes with auto-save debounce
-  const handleContentChange = (newVal: string) => {
-    setContent(newVal);
+  const scheduleAutoSave = (newVal: string) => {
     if (!file) return;
-
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(async () => {
       setIsSaving(true);
@@ -68,6 +80,50 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         setIsSaving(false);
       }
     }, 1200);
+  };
+
+  // Handle local changes with auto-save debounce & undo/redo history
+  const handleContentChange = (newVal: string) => {
+    setContent(newVal);
+    setHistory(prev => {
+      const sliced = prev.slice(0, historyIndex + 1);
+      if (sliced[sliced.length - 1] === newVal) return sliced;
+      const next = [...sliced, newVal].slice(-80);
+      setHistoryIndex(next.length - 1);
+      return next;
+    });
+    scheduleAutoSave(newVal);
+  };
+
+  const handleUndo = () => {
+    if (historyIndex <= 0) return;
+    const nextIdx = historyIndex - 1;
+    const prevVal = history[nextIdx];
+    setHistoryIndex(nextIdx);
+    setContent(prevVal);
+    scheduleAutoSave(prevVal);
+  };
+
+  const handleRedo = () => {
+    if (historyIndex >= history.length - 1) return;
+    const nextIdx = historyIndex + 1;
+    const nextVal = history[nextIdx];
+    setHistoryIndex(nextIdx);
+    setContent(nextVal);
+    scheduleAutoSave(nextVal);
+  };
+
+  const handleAIRewrite = async (instruction: string) => {
+    if (!onRewriteContent || !content.trim() || isRewriting) return;
+    setIsRewriting(true);
+    try {
+      const rewritten = await onRewriteContent(content, instruction);
+      if (rewritten && rewritten.trim()) {
+        handleContentChange(rewritten);
+      }
+    } finally {
+      setIsRewriting(false);
+    }
   };
 
   const handleManualSaveVersion = async () => {
@@ -313,6 +369,23 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       {mode === 'editor' && (
         <div className="h-8 bg-[#0e111a] border-b border-[#1b2131] px-2 sm:px-4 flex items-center gap-1 text-slate-400 text-xs overflow-x-auto no-scrollbar flex-nowrap select-none shrink-0 w-full">
           <button
+            onClick={handleUndo}
+            disabled={historyIndex <= 0}
+            className="p-1 rounded hover:bg-[#1a2130] hover:text-slate-200 disabled:opacity-35 shrink-0"
+            title="Deshacer (Ctrl+Z)"
+          >
+            <Undo2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={handleRedo}
+            disabled={historyIndex >= history.length - 1}
+            className="p-1 rounded hover:bg-[#1a2130] hover:text-slate-200 disabled:opacity-35 shrink-0"
+            title="Rehacer (Ctrl+Y)"
+          >
+            <Redo2 className="w-3.5 h-3.5" />
+          </button>
+          <div className="w-px h-3.5 bg-[#202738] mx-1 shrink-0" />
+          <button
             onClick={() => insertText('# ', '')}
             className="px-2 py-0.5 rounded hover:bg-[#1a2130] hover:text-slate-200 font-serif font-bold shrink-0 text-xs"
             title="Encabezado H1"
@@ -363,6 +436,41 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             *** Escena
           </button>
           <div className="w-px h-3.5 bg-[#202738] mx-1 shrink-0" />
+          {onRewriteContent && (
+            <button
+              onClick={() => handleAIRewrite('Mejora el estilo literario, la fluidez y la profundidad descriptiva manteniendo la trama y los personajes.')}
+              disabled={isRewriting || !content.trim()}
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-950/70 hover:bg-indigo-900/80 disabled:opacity-40 text-indigo-200 border border-indigo-700/60 text-[11px] shrink-0"
+              title="Reescribir y mejorar este capítulo directamente con IA"
+            >
+              <Wand2 className="w-3 h-3 text-lime-400 shrink-0" />
+              <span className="whitespace-nowrap">{isRewriting ? 'Reescribiendo...' : 'Reescribir con IA'}</span>
+            </button>
+          )}
+          {onGenerateImage && (
+            <button
+              onClick={async () => {
+                if (isGeneratingImg) return;
+                setIsGeneratingImg(true);
+                try {
+                  const imgUrl = await onGenerateImage(file.name);
+                  if (imgUrl) {
+                    const nextContent = `${content}\n\n![Ilustración: ${file.name}](${imgUrl})`;
+                    handleContentChange(nextContent);
+                    setMode('preview');
+                  }
+                } finally {
+                  setIsGeneratingImg(false);
+                }
+              }}
+              disabled={isGeneratingImg}
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/70 hover:bg-emerald-900/80 disabled:opacity-40 text-emerald-200 border border-emerald-700/60 text-[11px] shrink-0"
+              title="Generar ilustración para este capítulo e insertarla"
+            >
+              <ImagePlus className="w-3 h-3 text-emerald-400 shrink-0" />
+              <span className="whitespace-nowrap">{isGeneratingImg ? 'Generando...' : 'Generar Imagen'}</span>
+            </button>
+          )}
           <button
             onClick={() => onAskAgentToEdit(`Mejora la tensión literaria y el estilo del capítulo actual: "${file.name}"`)}
             className="flex items-center gap-1 px-2 py-0.5 rounded bg-violet-950/60 hover:bg-violet-900/80 text-violet-300 border border-violet-800/60 text-[11px] shrink-0"
@@ -381,6 +489,16 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             ref={textareaRef}
             value={content}
             onChange={e => handleContentChange(e.target.value)}
+            onKeyDown={e => {
+              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) handleRedo();
+                else handleUndo();
+              } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                handleRedo();
+              }
+            }}
             className="w-full h-full p-3 sm:p-5 md:p-6 bg-[#0a0c12] text-slate-100 font-mono text-xs sm:text-sm leading-relaxed resize-none focus:outline-none selection:bg-violet-800/60"
             placeholder="Comienza a redactar o deja que el Agente Editorial desarrolle el capítulo..."
             spellCheck="true"

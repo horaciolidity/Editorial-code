@@ -353,6 +353,24 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                     <span className="truncate">Checkpoints: {msg.checkpoints.join(', ')}</span>
                   </div>
                 )}
+
+                {/* Direct Action Button: Apply / Resolve findings */}
+                {msg.role === 'agent' && !isThinking && (
+                  <div className="pt-2 mt-1 border-t border-[#1e2536] flex justify-end">
+                    <button
+                      onClick={() =>
+                        onSendMessage(
+                          'Modifica y actualiza los capítulos existentes usando update_chapter (NO crees capítulos nuevos duplicados) para aplicar todas las mejoras, correcciones y hallazgos que acabas de indicar.'
+                        )
+                      }
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-violet-600/90 hover:bg-violet-500 text-white text-[11px] font-medium transition-colors shadow-sm"
+                      title="Ordenar al agente que modifique los capítulos existentes con estas correcciones"
+                    >
+                      <Sparkles className="w-3 h-3 text-lime-300 shrink-0" />
+                      <span>Aplicar y Resolver</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );

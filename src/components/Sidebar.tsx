@@ -15,7 +15,12 @@ import {
   ChevronDown,
   Sparkles,
   ShieldCheck,
-  Feather
+  Feather,
+  ArrowUp,
+  ArrowDown,
+  RefreshCw,
+  Upload,
+  Edit2
 } from 'lucide-react';
 import {
   Project,
@@ -48,6 +53,13 @@ interface SidebarProps {
   permissionMode: AgentPermissionMode;
   onChangePermissionMode: (mode: AgentPermissionMode) => void;
   onUpdateProject: (updates: Partial<Project>) => void;
+  onReorderFiles?: (orderedFileIds: string[]) => Promise<void>;
+  onRegenerateIllustration?: (payload: {
+    illustrationId?: string;
+    type: 'cover' | 'back_cover' | 'illustration';
+    title: string;
+    prompt?: string;
+  }) => Promise<void>;
   isMobile?: boolean;
   onOpenAIManager?: () => void;
 }
@@ -65,11 +77,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   permissionMode,
   onChangePermissionMode,
   onUpdateProject,
+  onReorderFiles,
+  onRegenerateIllustration,
   isMobile = false,
   onOpenAIManager
 }) => {
   const [chaptersOpen, setChaptersOpen] = useState(true);
   const [researchOpen, setResearchOpen] = useState(true);
+  const [editingIllId, setEditingIllId] = useState<string | null>(null);
+  const [editIllTitle, setEditIllTitle] = useState('');
+  const [editIllPrompt, setEditIllPrompt] = useState('');
+  const [regeneratingIllId, setRegeneratingIllId] = useState<string | null>(null);
 
   // New character form state
   const [newCharOpen, setNewCharOpen] = useState(false);
@@ -258,7 +276,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               {chaptersOpen && (
                 <div className="space-y-1 pl-1">
-                  {chapters.map((ch) => (
+                  {chapters.map((ch, idx) => (
                     <div
                       key={ch.id}
                       onClick={() => onSelectFile(ch.id)}
@@ -268,23 +286,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           : 'text-slate-300 hover:bg-[#161a24] hover:text-slate-100'
                       }`}
                     >
-                      <div className="flex items-center gap-2 truncate min-w-0 flex-1 mr-2">
+                      <div className="flex items-center gap-2 truncate min-w-0 flex-1 mr-1">
                         <Feather className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                         <span className="truncate text-xs">{ch.name}</span>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] font-mono text-slate-500 group-hover:text-slate-400">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] font-mono text-slate-500 group-hover:text-slate-400 mr-0.5">
                           {ch.wordCount || 0} w
                         </span>
+                        {onReorderFiles && chapters.length > 1 && (
+                          <div className="flex items-center opacity-70 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (idx === 0) return;
+                                const next = [...chapters];
+                                [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                const nonChapters = files.filter(f => f.type !== 'chapter').map(f => f.id);
+                                onReorderFiles([...next.map(c => c.id), ...nonChapters]);
+                              }}
+                              disabled={idx === 0}
+                              className="p-0.5 text-slate-500 hover:text-violet-300 disabled:opacity-25"
+                              title="Subir capítulo"
+                            >
+                              <ArrowUp className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (idx === chapters.length - 1) return;
+                                const next = [...chapters];
+                                [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                const nonChapters = files.filter(f => f.type !== 'chapter').map(f => f.id);
+                                onReorderFiles([...next.map(c => c.id), ...nonChapters]);
+                              }}
+                              disabled={idx === chapters.length - 1}
+                              className="p-0.5 text-slate-500 hover:text-violet-300 disabled:opacity-25"
+                              title="Bajar capítulo"
+                            >
+                              <ArrowDown className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
                         <button
                           onClick={e => {
                             e.stopPropagation();
-                            if (confirm(`¿Eliminar capítulo "${ch.name}"?`)) {
-                              onDeleteFile(ch.id);
-                            }
+                            onDeleteFile(ch.id);
                           }}
                           className="opacity-70 sm:opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-opacity p-1"
-                          title="Eliminar archivo"
+                          title="Eliminar capítulo"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -603,23 +653,168 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* TAB: ILLUSTRATIONS */}
         {activeTab === 'illustrations' && (
           <div className="space-y-3">
-            <span className="font-semibold text-slate-200 uppercase tracking-wider text-[10px] px-1 block">
-              Galería de Ilustraciones y Portadas
-            </span>
+            <div className="flex items-center justify-between px-1">
+              <span className="font-semibold text-slate-200 uppercase tracking-wider text-[10px]">
+                Portadas e Ilustraciones ({(currentProject?.illustrations || []).length})
+              </span>
+              {onRegenerateIllustration && (
+                <button
+                  onClick={async () => {
+                    setRegeneratingIllId('new');
+                    try {
+                      await onRegenerateIllustration({
+                        type: 'illustration',
+                        title: `Ilustración ${(currentProject?.illustrations || []).length + 1}`,
+                        prompt: `Escena atmosférica de ${currentProject?.title || 'la obra'}`
+                      });
+                    } finally {
+                      setRegeneratingIllId(null);
+                    }
+                  }}
+                  disabled={regeneratingIllId === 'new'}
+                  className="px-2 py-1 rounded bg-[#1a2130] hover:bg-violet-900/40 text-violet-300 border border-[#273247] transition-colors flex items-center gap-1 text-[10px] font-medium"
+                  title="Generar nueva ilustración"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>{regeneratingIllId === 'new' ? 'Creando...' : 'Nueva'}</span>
+                </button>
+              )}
+            </div>
+
             <div className="space-y-2.5">
               {(currentProject?.illustrations || []).map(ill => (
                 <div key={ill.id} className="bg-[#141824] border border-[#252f42] rounded-lg overflow-hidden">
-                  <div className="h-28 sm:h-32 overflow-hidden bg-slate-900 relative">
+                  <div className="h-32 sm:h-36 overflow-hidden bg-slate-900 relative group">
                     <img src={ill.imageUrl} alt={ill.title} className="w-full h-full object-cover" />
-                    <span className="absolute top-1 right-1 text-[9px] uppercase px-1.5 py-0.5 rounded bg-black/70 text-lime-300 font-mono">
-                      {ill.type}
+                    <span className="absolute top-1.5 left-1.5 text-[9px] uppercase px-1.5 py-0.5 rounded bg-black/75 text-lime-300 font-mono">
+                      {ill.type === 'portada' ? 'Portada' : ill.type === 'contraportada' ? 'Contraportada' : 'Ilustración'}
                     </span>
                   </div>
-                  <div className="p-2">
-                    <div className="font-semibold text-slate-100 truncate text-xs">{ill.title}</div>
-                    <p className="text-[10px] text-slate-400 line-clamp-2 mt-0.5 italic">
-                      "{ill.prompt}"
-                    </p>
+
+                  <div className="p-2.5 space-y-2">
+                    {editingIllId === ill.id ? (
+                      <div className="space-y-1.5">
+                        <input
+                          type="text"
+                          value={editIllTitle}
+                          onChange={e => setEditIllTitle(e.target.value)}
+                          className="w-full bg-[#0a0d14] border border-[#2a364d] rounded px-2 py-1 text-xs text-slate-100"
+                          placeholder="Título"
+                        />
+                        <textarea
+                          value={editIllPrompt}
+                          onChange={e => setEditIllPrompt(e.target.value)}
+                          rows={2}
+                          className="w-full bg-[#0a0d14] border border-[#2a364d] rounded px-2 py-1 text-[11px] text-slate-200 resize-none"
+                          placeholder="Descripción / Prompt visual"
+                        />
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            onClick={() => setEditingIllId(null)}
+                            className="px-2 py-0.5 text-[10px] text-slate-400 hover:text-slate-200"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => {
+                              const updated = (currentProject?.illustrations || []).map(item =>
+                                item.id === ill.id ? { ...item, title: editIllTitle, prompt: editIllPrompt } : item
+                              );
+                              onUpdateProject({ illustrations: updated });
+                              setEditingIllId(null);
+                            }}
+                            className="px-2.5 py-0.5 rounded bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-medium"
+                          >
+                            Guardar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="font-semibold text-slate-100 truncate text-xs">{ill.title}</div>
+                        <p className="text-[10px] text-slate-400 line-clamp-2 italic">
+                          "{ill.prompt}"
+                        </p>
+                      </>
+                    )}
+
+                    <div className="flex items-center justify-between pt-1.5 border-t border-[#1e2533] gap-1">
+                      <div className="flex items-center gap-1">
+                        {onRegenerateIllustration && (
+                          <button
+                            onClick={async () => {
+                              setRegeneratingIllId(ill.id);
+                              try {
+                                await onRegenerateIllustration({
+                                  illustrationId: ill.id,
+                                  type: (ill.type as any) || 'illustration',
+                                  title: ill.title,
+                                  prompt: ill.prompt
+                                });
+                              } finally {
+                                setRegeneratingIllId(null);
+                              }
+                            }}
+                            disabled={regeneratingIllId === ill.id}
+                            className="flex items-center gap-1 px-1.5 py-1 rounded bg-[#1a2130] hover:bg-violet-950/60 text-violet-300 text-[10px]"
+                            title="Regenerar arte"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${regeneratingIllId === ill.id ? 'animate-spin' : ''}`} />
+                            <span>Regenerar</span>
+                          </button>
+                        )}
+
+                        <label
+                          className="flex items-center gap-1 px-1.5 py-1 rounded bg-[#1a2130] hover:bg-[#232c40] text-slate-300 text-[10px] cursor-pointer"
+                          title="Subir o reemplazar imagen"
+                        >
+                          <Upload className="w-3 h-3 text-cyan-400" />
+                          <span>Subir</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                const dataUrl = reader.result as string;
+                                const updated = (currentProject?.illustrations || []).map(item =>
+                                  item.id === ill.id ? { ...item, imageUrl: dataUrl } : item
+                                );
+                                onUpdateProject({ illustrations: updated });
+                              };
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingIllId(ill.id);
+                            setEditIllTitle(ill.title);
+                            setEditIllPrompt(ill.prompt);
+                          }}
+                          className="p-1 rounded hover:bg-[#1e2536] text-slate-400 hover:text-slate-200"
+                          title="Editar título o prompt"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            const updated = (currentProject?.illustrations || []).filter(item => item.id !== ill.id);
+                            onUpdateProject({ illustrations: updated });
+                          }}
+                          className="p-1 rounded hover:bg-[#1e2536] text-slate-400 hover:text-rose-400"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}

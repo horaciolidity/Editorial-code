@@ -13,7 +13,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
-  PanelRightOpen
+  PanelRightOpen,
+  Trash2
 } from 'lucide-react';
 import { Project, ProjectFile } from '../types/editorial';
 
@@ -21,6 +22,7 @@ interface HeaderProps {
   projects: Project[];
   currentProject: Project | null;
   onSelectProject: (projectId: string) => void;
+  onDeleteProject?: (projectId: string) => void;
   onOpenNewProjectWizard: () => void;
   files: ProjectFile[];
   isOnline: boolean;
@@ -42,6 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
   projects,
   currentProject,
   onSelectProject,
+  onDeleteProject,
   onOpenNewProjectWizard,
   files,
   isOnline,
@@ -131,13 +134,13 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
                 <div className="max-h-56 overflow-y-auto">
                   {projects.map(p => (
-                    <button
+                    <div
                       key={p.id}
                       onClick={() => {
                         onSelectProject(p.id);
                         setProjectDropdownOpen(false);
                       }}
-                      className={`w-full text-left px-3 py-2 flex items-start gap-2 hover:bg-[#1a2130] transition-colors ${
+                      className={`group w-full text-left px-3 py-2 flex items-start gap-2 hover:bg-[#1a2130] transition-colors cursor-pointer ${
                         currentProject?.id === p.id
                           ? 'bg-violet-950/40 text-violet-200 border-l-2 border-violet-500'
                           : 'text-slate-300'
@@ -150,7 +153,19 @@ export const Header: React.FC<HeaderProps> = ({
                           {p.genre.replace('_', ' ')} • {p.authorName}
                         </div>
                       </div>
-                    </button>
+                      {onDeleteProject && (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            onDeleteProject(p.id);
+                          }}
+                          className="opacity-70 sm:opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition-opacity shrink-0"
+                          title="Eliminar proyecto"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
                 <div className="border-t border-[#232b3d] mt-1 pt-1 px-1">
@@ -264,6 +279,29 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => setExportMenuOpen(false)}
               />
               <div className="absolute right-0 top-full mt-1 w-48 sm:w-52 bg-[#121620] border border-[#263044] rounded-lg shadow-2xl py-1 z-50 text-slate-300">
+                <button
+                  onClick={() => handleExport('epub')}
+                  className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-[#1a2130] text-slate-200 text-xs"
+                >
+                  <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Libro Digital (.epub)</span>
+                </button>
+                <button
+                  onClick={() => handleExport('pdf')}
+                  className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-[#1a2130] text-slate-200 text-xs"
+                >
+                  <FileText className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span>PDF Maquetado (.pdf)</span>
+                </button>
+                {(currentProject?.bookType === 'serie' || currentProject?.bookType === 'comic') && (
+                  <button
+                    onClick={() => handleExport('fountain')}
+                    className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-[#1a2130] text-slate-200 text-xs"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Guion (.fountain)</span>
+                  </button>
+                )}
                 <button
                   onClick={() => handleExport('markdown')}
                   className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-[#1a2130] text-slate-200 text-xs"

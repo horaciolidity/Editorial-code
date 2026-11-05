@@ -13,15 +13,25 @@ interface NewProjectWizardProps {
   isOpen: boolean;
   onClose: () => void;
   onCreateProject: (projectData: Partial<Project>) => Promise<void>;
+  onAutoGenerateProject?: (params: {
+    bookType: string;
+    title?: string;
+    instructions?: string;
+    language?: string;
+    author?: string;
+  }) => Promise<void>;
 }
 
 export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
   isOpen,
   onClose,
-  onCreateProject
+  onCreateProject,
+  onAutoGenerateProject
 }) => {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+  const [creativeInstructions, setCreativeInstructions] = useState('');
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -87,38 +97,74 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
     if (!title.trim()) return;
     setIsSubmitting(true);
     try {
-      await onCreateProject({
-        title: title.trim(),
-        subtitle: subtitle.trim(),
-        authorName: authorName.trim(),
-        genre,
-        bookType,
-        language,
-        targetAudience,
-        toneStyle,
-        estimatedWords: Number(estimatedWords),
-        estimatedChapters: Number(estimatedChapters),
-        depthLevel,
-        narratorType,
-        needResearch,
-        needIllustrations,
-        targetPlatforms: platforms,
-        memory: {
-          synopsis: synopsis.trim() || `Proyecto editorial: ${title}.`,
-          coreIdea: coreIdea.trim() || 'Premisa principal del libro.',
+      if (onAutoGenerateProject) {
+        await onAutoGenerateProject({
+          bookType,
+          genre,
+          title: title.trim(),
+          subtitle: subtitle.trim(),
+          author: authorName.trim() || 'Autor',
+          instructions: [creativeInstructions.trim(), coreIdea.trim(), synopsis.trim()].filter(Boolean).join('\n'),
+          language,
           targetAudience,
-          toneAndStyle: toneStyle,
-          writingRules: [
-            `Mantener el tono ${toneStyle.toLowerCase()}.`,
-            'Cuidar la continuidad temporal entre capítulos.'
-          ],
-          narrativeContinuityNotes: [],
-          sourcesAndReferences: []
-        }
-      });
+          toneStyle,
+          estimatedWords: Number(estimatedWords),
+          estimatedChapters: Number(estimatedChapters),
+          narratorType,
+          needResearch,
+          needIllustrations
+        } as any);
+      } else {
+        await onCreateProject({
+          title: title.trim(),
+          subtitle: subtitle.trim(),
+          authorName: authorName.trim(),
+          genre,
+          bookType,
+          language,
+          targetAudience,
+          toneStyle,
+          estimatedWords: Number(estimatedWords),
+          estimatedChapters: Number(estimatedChapters),
+          depthLevel,
+          narratorType,
+          needResearch,
+          needIllustrations,
+          targetPlatforms: platforms,
+          memory: {
+            synopsis: synopsis.trim() || `Proyecto editorial: ${title}.`,
+            coreIdea: coreIdea.trim() || 'Premisa principal del libro.',
+            targetAudience,
+            toneAndStyle: toneStyle,
+            writingRules: [
+              `Mantener el tono ${toneStyle.toLowerCase()}.`,
+              'Cuidar la continuidad temporal entre capítulos.'
+            ],
+            narrativeContinuityNotes: [],
+            sourcesAndReferences: []
+          }
+        });
+      }
       onClose();
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAutoGenerate = async () => {
+    if (!onAutoGenerateProject) return;
+    setIsAutoGenerating(true);
+    try {
+      await onAutoGenerateProject({
+        bookType,
+        title: title.trim() || undefined,
+        instructions: creativeInstructions.trim() || coreIdea.trim() || undefined,
+        language,
+        author: authorName.trim() || 'Autor'
+      });
+      onClose();
+    } finally {
+      setIsAutoGenerating(false);
     }
   };
 
@@ -163,7 +209,73 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
             <div className="space-y-3 sm:space-y-4">
               <div>
                 <label className="text-slate-300 font-semibold block mb-1">
-                  Título Provisional del Libro *
+                  Formato del Proyecto *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
+                  {[
+                    { id: 'novela', label: 'Libro / Novela', desc: 'Capítulos y escenas' },
+                    { id: 'cuentos', label: 'Cuento / Relato', desc: 'Narrativa breve' },
+                    { id: 'comic', label: 'Cómic / Novela Gráfica', desc: 'Páginas y viñetas' },
+                    { id: 'serie', label: 'Serie / Episodios', desc: 'Guion y episodios' },
+                    { id: 'ensayo', label: 'Ensayo / Investigación', desc: 'Tesis y capítulos' },
+                    { id: 'manual', label: 'Manual / Guía', desc: 'Módulos y pasos' }
+                  ].map(fmt => (
+                    <button
+                      key={fmt.id}
+                      type="button"
+                      onClick={() => setBookType(fmt.id as BookType)}
+                      className={`p-2 rounded-lg border text-left transition-colors ${
+                        bookType === fmt.id
+                          ? 'bg-violet-950/60 border-violet-500 text-violet-200'
+                          : 'bg-[#121622] border-[#222c3d] text-slate-400 hover:text-slate-200 hover:bg-[#181e2e]'
+                      }`}
+                    >
+                      <div className="font-semibold text-xs truncate">{fmt.label}</div>
+                      <div className="text-[10px] text-slate-400 truncate">{fmt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  Instrucciones Creativas (para Generación Autónoma)
+                </label>
+                <textarea
+                  value={creativeInstructions}
+                  onChange={e => setCreativeInstructions(e.target.value)}
+                  placeholder="Describe brevemente tu idea, ambientación, personajes o tono (opcional). La IA generará la historia completa, capítulos/páginas, personajes, portada, contraportada e ilustraciones."
+                  rows={2}
+                  className="w-full bg-[#0a0d14] border border-[#232d40] rounded-lg p-2 sm:p-2.5 text-slate-100 text-xs focus:outline-none focus:border-violet-500 resize-none"
+                />
+              </div>
+
+              {onAutoGenerateProject && (
+                <div className="p-3 rounded-xl bg-gradient-to-r from-violet-950/60 via-indigo-950/50 to-slate-900 border border-violet-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                  <div>
+                    <div className="text-xs font-semibold text-violet-200 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-lime-400 shrink-0" />
+                      Generación Autónoma Completa (1 Clic)
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Crea automáticamente capítulos, personajes, mundo, portada, contraportada e ilustraciones y ábrelo en el editor.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAutoGenerate}
+                    disabled={isAutoGenerating || isSubmitting}
+                    className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 text-white font-semibold text-xs shadow-lg shadow-violet-600/25 transition-all"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-lime-300 shrink-0" />
+                    <span>{isAutoGenerating ? 'Generando obra...' : 'Generar Obra Completa'}</span>
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  Título Provisional (opcional en generación automática)
                 </label>
                 <input
                   type="text"
@@ -171,7 +283,6 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                   onChange={e => setTitle(e.target.value)}
                   placeholder="Ej. El Canto de las Mareas Silenciosas"
                   className="w-full bg-[#0a0d14] border border-[#232d40] rounded-lg p-2 sm:p-2.5 text-slate-100 text-xs sm:text-sm focus:outline-none focus:border-violet-500"
-                  required
                 />
               </div>
 

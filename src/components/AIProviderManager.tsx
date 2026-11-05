@@ -1221,9 +1221,9 @@ export const AIProviderManager: React.FC<AIProviderManagerProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 {[
                   { key: 'writing', label: 'Escritura y Capítulos Creativos', defaultP: 'gemini', defaultM: 'gemini-3.8-flash' },
-                  { key: 'research', label: 'Investigación Histórica y Fuentes', defaultP: 'groq', defaultM: 'llama-3.3-70b-versatile' },
+                  { key: 'research', label: 'Investigación Histórica y Fuentes', defaultP: 'groq', defaultM: 'openai/gpt-oss-20b' },
                   { key: 'editing', label: 'Edición Literaria y Tensión', defaultP: 'mistral', defaultM: 'mistral-small-latest' },
-                  { key: 'proofreading', label: 'Corrección Ortotipográfica Rápida', defaultP: 'groq', defaultM: 'llama-3.1-8b-instant' },
+                  { key: 'proofreading', label: 'Corrección Ortotipográfica Rápida', defaultP: 'groq', defaultM: 'openai/gpt-oss-20b' },
                   { key: 'agentTools', label: 'Agente y Ejecución de Herramientas', defaultP: 'gemini', defaultM: 'gemini-3.8-flash' },
                   { key: 'documentAnalysis', label: 'Análisis y Contexto Extenso (>32k)', defaultP: 'gemini', defaultM: 'gemini-3.8-flash' }
                 ].map(task => {

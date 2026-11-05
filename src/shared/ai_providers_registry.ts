@@ -102,11 +102,11 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
       replenishesAutomatically: true,
       officialDocUrl: 'https://console.groq.com/docs'
     },
-    defaultModel: 'llama-3.3-70b-versatile',
+    defaultModel: 'openai/gpt-oss-20b',
     models: [
       {
-        id: 'llama-3.3-70b-versatile',
-        name: 'Llama 3.3 70B Versatile',
+        id: 'openai/gpt-oss-20b',
+        name: 'GPT-OSS 20B (Groq)',
         tier: 'permanent_free',
         contextTokens: 128000,
         rpmLimit: 30,
@@ -242,11 +242,11 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
       replenishesAutomatically: true,
       officialDocUrl: 'https://openrouter.ai/docs'
     },
-    defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
+    defaultModel: 'openrouter/free',
     models: [
       {
-        id: 'meta-llama/llama-3.3-70b-instruct:free',
-        name: 'Llama 3.3 70B Instruct (Free)',
+        id: 'openrouter/free',
+        name: 'OpenRouter Free Auto-Router',
         tier: 'permanent_free',
         contextTokens: 128000,
         capabilities: {
@@ -507,7 +507,7 @@ export const INITIAL_PROVIDERS_CONFIG: ProviderState[] = [
     id: 'huggingface',
     name: 'Hugging Face (Inference API)',
     type: 'huggingface',
-    baseUrl: 'https://api-inference.huggingface.co/v1/chat/completions',
+    baseUrl: 'https://router.huggingface.co/v1/chat/completions',
     apiKeyUrl: 'https://huggingface.co/settings/tokens',
     docsUrl: 'https://huggingface.co/docs/api-inference/',
     isConfigured: false,
@@ -552,9 +552,9 @@ export const DEFAULT_ROUTER_SETTINGS: AIRouterSettings = {
   priorityOrder: ['gemini', 'groq', 'cerebras', 'openrouter', 'mistral', 'deepseek', 'qwen', 'huggingface'],
   taskMapping: {
     writing: { provider: 'gemini', model: 'gemini-3.8-flash' },
-    research: { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+    research: { provider: 'groq', model: 'openai/gpt-oss-20b' },
     editing: { provider: 'mistral', model: 'mistral-small-latest' },
-    proofreading: { provider: 'groq', model: 'llama-3.1-8b-instant' },
+    proofreading: { provider: 'groq', model: 'openai/gpt-oss-20b' },
     agentTools: { provider: 'gemini', model: 'gemini-3.8-flash' },
     documentAnalysis: { provider: 'gemini', model: 'gemini-3.8-flash' }
   },
