@@ -12,7 +12,7 @@ export type BookGenre =
   | 'enciclopedia'
   | 'divulgacion_autoayuda';
 
-export type BookType = 'novela' | 'cuentos' | 'comic' | 'serie' | 'ensayo' | 'manual' | 'guia' | 'biografia' | 'antologia' | 'obra_tecnica';
+export type BookType = 'novela' | 'cuentos' | 'comic' | 'manga' | 'infantil' | 'serie' | 'ensayo' | 'manual' | 'guia' | 'biografia' | 'antologia' | 'obra_tecnica';
 
 export type SpecialistRole =
   | 'director'
@@ -123,6 +123,14 @@ export interface BookFormatting {
   bindingType: 'tapa_blanda' | 'tapa_dura' | 'ebook';
   colorMode: 'byn' | 'color';
   includeHeaderFooter: boolean;
+  templateId?: string;
+  coverTemplateId?: string;
+  chapterTitleStyle?: 'classic_centered' | 'modern_left' | 'ornate_fantasy' | 'comic_banner' | 'minimal_number';
+  imagePlacement?: 'top' | 'inline' | 'full_bleed' | 'side_by_side';
+  accentColor?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  decorativeStyle?: 'none' | 'minimal_line' | 'ornate_frame' | 'comic_gutter' | 'storybook_border';
   pageNumbering: boolean;
   dropCaps: boolean;
   runningTitle: string;

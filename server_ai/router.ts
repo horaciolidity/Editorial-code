@@ -519,7 +519,8 @@ export class AIRouterManager {
             },
             { role: 'user', content: userPrompt }
           ],
-          response_format: { type: 'json_object' },
+          ...(provider.id !== 'groq' ? { response_format: { type: 'json_object' } } : {}),
+          max_tokens: 8192,
           temperature: 0.3
         })
       });
@@ -550,7 +551,40 @@ export class AIRouterManager {
       const rawContent = data.choices?.[0]?.message?.content || '{}';
       // Clean up markdown block if model wrapped in ```json
       const cleaned = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      return JSON.parse(cleaned);
+      try {
+        return JSON.parse(cleaned);
+      } catch (parseErr) {
+        // Attempt to repair truncated JSON
+        let repaired = cleaned;
+        let inString = false;
+        let escaped = false;
+        const stack: string[] = [];
+        for (let i = 0; i < repaired.length; i++) {
+          const ch = repaired[i];
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (ch === '\\') {
+            escaped = true;
+            continue;
+          }
+          if (ch === '"') {
+            inString = !inString;
+            continue;
+          }
+          if (!inString) {
+            if (ch === '{') stack.push('}');
+            else if (ch === '[') stack.push(']');
+            else if ((ch === '}' || ch === ']') && stack.length > 0) stack.pop();
+          }
+        }
+        if (inString) repaired += '"';
+        while (stack.length > 0) {
+          repaired += stack.pop();
+        }
+        return JSON.parse(repaired);
+      }
     }
 
     throw new Error(`Proveedor ${provider.name} no soportado.`);

@@ -216,6 +216,8 @@ export const NewProjectWizard: React.FC<NewProjectWizardProps> = ({
                     { id: 'novela', label: 'Libro / Novela', desc: 'Capítulos y escenas' },
                     { id: 'cuentos', label: 'Cuento / Relato', desc: 'Narrativa breve' },
                     { id: 'comic', label: 'Cómic / Novela Gráfica', desc: 'Páginas y viñetas' },
+                    { id: 'manga', label: 'Manga Japonés', desc: 'Viñetas B/N y tramas' },
+                    { id: 'infantil', label: 'Libro Infantil', desc: 'Cuento ilustrado' },
                     { id: 'serie', label: 'Serie / Episodios', desc: 'Guion y episodios' },
                     { id: 'ensayo', label: 'Ensayo / Investigación', desc: 'Tesis y capítulos' },
                     { id: 'manual', label: 'Manual / Guía', desc: 'Módulos y pasos' }

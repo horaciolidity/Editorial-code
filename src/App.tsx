@@ -267,7 +267,9 @@ export default function App() {
     try {
       addLog('info', `Iniciando generación autónoma de proyecto (${params.bookType})...`);
       const result = await autoGenerateProject(params);
-      setProjects(prev => [result.project, ...prev]);
+      if (result.project) {
+        setProjects(prev => [result.project, ...prev.filter(Boolean)]);
+      }
       setCurrentProjectId(result.project.id);
       setCurrentProject(result.project);
       setFiles(result.files || []);
@@ -330,8 +332,10 @@ export default function App() {
     if (!currentProjectId) return;
     try {
       const res = await regenerateIllustration(currentProjectId, payload);
-      setCurrentProject(res.project);
-      setProjects(prev => prev.map(p => (p.id === res.project.id ? res.project : p)));
+      if (res.project) {
+        setCurrentProject(res.project);
+        setProjects(prev => prev.filter(Boolean).map(p => (p?.id === res.project.id ? res.project : p)));
+      }
       addLog('tool', `Arte regenerado: "${payload.title}"`);
     } catch (err: any) {
       addLog('warn', `Error al regenerar arte: ${err.message}`);
@@ -365,8 +369,10 @@ export default function App() {
         title: `Ilustración: ${chapterTitle}`,
         prompt: `Escena ilustrada para ${chapterTitle} de ${currentProject?.title || 'la obra'}`
       });
-      setCurrentProject(res.project);
-      setProjects(prev => prev.map(p => (p.id === res.project.id ? res.project : p)));
+      if (res.project) {
+        setCurrentProject(res.project);
+        setProjects(prev => prev.filter(Boolean).map(p => (p?.id === res.project.id ? res.project : p)));
+      }
       addLog('tool', `Ilustración generada para "${chapterTitle}"`);
       return res.illustration?.imageUrl || null;
     } catch (err: any) {

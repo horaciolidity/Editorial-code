@@ -1,5 +1,6 @@
 // Procedural & AI-guided Editorial Artwork & Cover Generator
-// Generates crisp, high-resolution SVG data URLs tailored to genre, title, author, and scene prompts.
+// Uses @google/genai (Imagen 3 / Gemini Flash Image) when available, with rich category-specific SVG fallback.
+import { GoogleGenAI } from '@google/genai';
 
 function escapeXml(unsafe: string): string {
   return (unsafe || '')
@@ -173,11 +174,16 @@ export function generateIllustrationArtwork(params: {
   const typeLabel = escapeXml((params.type || 'interior').toUpperCase());
   const promptLines = wrapText(params.prompt || '', 46, 2);
 
-  if (params.bookType === 'comic') {
+  if (params.bookType === 'comic' || params.bookType === 'manga') {
+    const isManga = params.bookType === 'manga';
     const d1 = escapeXml((params.dialogue || '¡Algo se mueve en las sombras!').slice(0, 34));
     const d2 = escapeXml('No podemos detenernos ahora.');
-    const cap1 = escapeXml((params.title || 'PÁGINA DE CÓMIC').slice(0, 38).toUpperCase());
+    const cap1 = escapeXml((params.title || (isManga ? 'PÁGINA DE MANGA' : 'PÁGINA DE CÓMIC')).slice(0, 38).toUpperCase());
     const cap2 = escapeXml((params.prompt || 'La tensión aumenta en cada viñeta...').slice(0, 44));
+    const pBg1 = isManga ? '#ffffff' : palette.bg1;
+    const pBg2 = isManga ? '#e4e4e7' : palette.bg2;
+    const pAccent = isManga ? '#18181b' : palette.accent;
+    const pBorder = isManga ? '#09090b' : '#ffffff';
 
     const comicSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
       <defs>
@@ -281,4 +287,161 @@ export function generateIllustrationArtwork(params: {
   </svg>`;
 
   return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
+}
+
+export function buildCategoryImagePrompt(params: {
+  title: string;
+  prompt: string;
+  type: string;
+  genre?: string;
+  bookType?: string;
+}): string {
+  const { title, prompt, type, genre, bookType } = params;
+  if (type === 'portada') {
+    return `Professional book cover artwork for "${title}". ${prompt}. Genre: ${genre || 'fiction'}. High contrast, cinematic composition, no text.`;
+  }
+  if (bookType === 'manga') {
+    return `Japanese manga page with 4 dynamic black-and-white ink panels, screentone shading, expressive characters, and action speed lines depicting: ${title}. ${prompt}.`;
+  }
+  if (bookType === 'comic') {
+    return `Full-color graphic novel comic book page with 4 dynamic panels, bold ink outlines, and atmospheric lighting depicting: ${title}. ${prompt}.`;
+  }
+  if (bookType === 'infantil' || genre === 'infantil_juvenil') {
+    return `Colorful, warm, whimsical children's storybook illustration with charming characters and rich details: ${title}. ${prompt}.`;
+  }
+  if (genre === 'tecnico_educativo' || genre === 'manual_guia' || genre === 'ensayo_investigacion') {
+    return `Clean, modern editorial infographic and explanatory diagram illustration for: ${title}. ${prompt}.`;
+  }
+  return `Atmospheric editorial book illustration depicting: ${title}. ${prompt}. Genre: ${genre || 'literary'}.`;
+}
+
+export const ART_STYLE_PROMPTS: Record<string, string> = {
+  studio_ghibli: 'Studio Ghibli anime style, Hayao Miyazaki aesthetic, lush hand-painted backgrounds, warm atmospheric lighting, rich storytelling details',
+  cinematic: 'Cinematic film still, dramatic lighting, photorealistic editorial photography, shallow depth of field, 8k',
+  fantasy_oil: 'Epic fantasy oil painting, intricate worldbuilding, magical atmosphere, Greg Rutkowski and classic book cover art',
+  anime_manga: 'Japanese manga and anime illustration, dynamic ink linework, expressive characters, dramatic screentone shading',
+  watercolor_storybook: 'Whimsical watercolor children book illustration, warm pastel palette, charming hand-drawn details, Beatrix Potter meets modern picture book',
+  dark_noir: 'Dark graphic novel noir style, high contrast chiaroscuro shadows, moody thriller atmosphere, Frank Miller inspired',
+  editorial_minimal: 'Modern minimalist editorial illustration, clean geometric composition, bold typography-friendly negative space'
+};
+
+export async function generateRealOrFallbackImage(params: {
+  apiKey?: string;
+  title: string;
+  prompt: string;
+  type: string;
+  genre?: string;
+  bookType?: string;
+  artStyle?: string;
+  subtitle?: string;
+  authorName?: string;
+  isBackCover?: boolean;
+  seed?: number;
+}): Promise<{ imageUrl: string; isRealAI: boolean; providerUsed: string }> {
+  const { apiKey, title, prompt, type, genre, bookType, artStyle, subtitle, authorName, isBackCover, seed } = params;
+  const styleSuffix = artStyle && ART_STYLE_PROMPTS[artStyle] ? `, ${ART_STYLE_PROMPTS[artStyle]}` : '';
+  const fullPrompt = `${buildCategoryImagePrompt({ title, prompt, type, genre, bookType })}${styleSuffix}`;
+
+  // 1. Try Pollinations.ai (Free, no API key required, real AI image generation)
+  if (!isBackCover) {
+    try {
+      const width = type === 'portada' || bookType === 'comic' || bookType === 'manga' ? 768 : 1024;
+      const height = type === 'portada' || bookType === 'comic' || bookType === 'manga' ? 1024 : 576;
+      const pollSeed = (seed || Date.now()) % 999999;
+      const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=${width}&height=${height}&nologo=true&seed=${pollSeed}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 18000);
+      const res = await fetch(pollUrl, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok && res.headers.get('content-type')?.startsWith('image/')) {
+        const arrayBuf = await res.arrayBuffer();
+        const b64 = Buffer.from(arrayBuf).toString('base64');
+        const mime = res.headers.get('content-type') || 'image/jpeg';
+        if (b64.length > 1000) {
+          return {
+            imageUrl: `data:${mime};base64,${b64}`,
+            isRealAI: true,
+            providerUsed: 'Pollinations AI'
+          };
+        }
+      }
+    } catch (err: any) {
+      console.info('[Artwork] Pollinations AI unavailable, trying next provider:', String(err?.message || err).slice(0, 80));
+    }
+  }
+
+  // 2. Try Gemini Imagen 3 / Flash Image if API key is configured
+  if (apiKey && !isBackCover) {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const aspectRatio = type === 'portada' || bookType === 'comic' || bookType === 'manga' ? '3:4' : '16:9';
+
+      try {
+        const imgRes = await ai.models.generateImages({
+          model: 'imagen-3.0-generate-002',
+          prompt: fullPrompt,
+          config: { numberOfImages: 1, aspectRatio }
+        });
+        const b64 = imgRes.generatedImages?.[0]?.image?.imageBytes;
+        if (b64) {
+          return {
+            imageUrl: `data:image/png;base64,${b64}`,
+            isRealAI: true,
+            providerUsed: 'Gemini Imagen 3'
+          };
+        }
+      } catch {
+        const flashRes = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: fullPrompt
+        });
+        const parts = flashRes.candidates?.[0]?.content?.parts || [];
+        for (const part of parts) {
+          if (part.inlineData?.data) {
+            return {
+              imageUrl: `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`,
+              isRealAI: true,
+              providerUsed: 'Gemini 2.5 Flash Image'
+            };
+          }
+        }
+      }
+    } catch (err: any) {
+      const msg = String(err?.message || err || '');
+      if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+        console.info('[Artwork] Gemini image quota exhausted on current tier, using procedural SVG engine.');
+      } else {
+        console.info('[Artwork] Using procedural SVG engine:', msg.slice(0, 120));
+      }
+    }
+  }
+
+  if (type === 'portada' || type === 'contraportada') {
+    return {
+      imageUrl: generateCoverArtwork({
+        title,
+        subtitle,
+        authorName,
+        genre,
+        bookType,
+        isBackCover: type === 'contraportada' || isBackCover,
+        seed
+      }),
+      isRealAI: false,
+      providerUsed: 'Motor Editorial SVG'
+    };
+  }
+
+  return {
+    imageUrl: generateIllustrationArtwork({
+      title,
+      prompt,
+      type,
+      genre,
+      bookType,
+      seed
+    }),
+    isRealAI: false,
+    providerUsed: 'Motor Editorial SVG'
+  };
 }

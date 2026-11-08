@@ -5,7 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { aiRouter } from './server_ai/router.ts';
-import { generateCoverArtwork, generateIllustrationArtwork } from './server_ai/artwork.ts';
+import { generateCoverArtwork, generateIllustrationArtwork, generateRealOrFallbackImage } from './server_ai/artwork.ts';
 import { buildEpubBuffer } from './server_ai/epub_builder.ts';
 
 dotenv.config();
@@ -689,55 +689,91 @@ Genera al menos 4 capítulos/páginas/episodios completos y bien desarrollados, 
           'Mantener coherencia estricta en la psicología de los personajes.',
           'Cuidar el ritmo y la tensión en cada escena.'
         ],
-        characters: [
-          {
-            id: `char-${Date.now()}-1`,
-            name: 'Elena Vance',
-            role: 'protagonista',
-            age: '32',
-            description: 'Investigadora brillante, tenaz y observadora.',
-            personality: 'Analítica, valiente, reservada',
-            motivation: 'Descubrir la verdad oculta tras el misterio',
-            arc: 'Pasa de la duda a liderar la resolución del conflicto',
-            relationships: 'Aliada cercana de Marcus'
-          },
-          {
-            id: `char-${Date.now()}-2`,
-            name: 'Marcus Thorne',
-            role: 'secundario',
-            age: '40',
-            description: 'Ex-agente con amplio conocimiento del terreno.',
-            personality: 'Pragmático, protector, astuto',
-            motivation: 'Proteger a Elena y enmendar errores del pasado',
-            arc: 'Aprende a confiar nuevamente',
-            relationships: 'Compañero de travesía de Elena'
-          },
-          {
-            id: `char-${Date.now()}-3`,
-            name: 'Director Kael',
-            role: 'antagonista',
-            age: '54',
-            description: 'Figura de autoridad que oculta información clave.',
-            personality: 'Calculador, frío, persuasivo',
-            motivation: 'Mantener el control absoluto del secreto',
-            arc: 'Su red de influencia se desmorona',
-            relationships: 'Antiguo superior de Marcus'
-          }
-        ],
+        characters: (() => {
+          const pools: Record<string, { p: string; s: string; a: string; pDesc: string; sDesc: string; aDesc: string }> = {
+            fantasia_scifi: {
+              p: 'Lyra Aeris', s: 'Kaelen Vane', a: 'Archon Malakor',
+              pDesc: 'Cartógrafa estelar / hechicera que descubre una anomalía ancestral.',
+              sDesc: 'Piloto mercenario / espadachín con un pasado en la guardia.',
+              aDesc: 'Regente supremo que busca controlar la fuente de energía.'
+            },
+            terror_misterio: {
+              p: 'Clara Voss', s: 'Inspector Navarro', a: 'El Coleccionista',
+              pDesc: 'Restauradora de archivos que halla una grabación imposible.',
+              sDesc: 'Detective veterano marcado por un caso sin resolver.',
+              aDesc: 'Mente oculta detrás de las desapariciones en la costa.'
+            },
+            infantil_juvenil: {
+              p: 'Milo', s: 'Pippa la Zorra', a: 'El Señor de las Sombras',
+              pDesc: 'Joven curioso que encuentra un mapa mágico en el desván.',
+              sDesc: 'Compañera astuta y alegre que conoce todos los senderos.',
+              aDesc: 'Guardián gruñón que teme que le roben su tranquilidad.'
+            },
+            romance: {
+              p: 'Sofía Mendoza', s: 'Julián Reyes', a: 'Victoria Sterling',
+              pDesc: 'Arquitecta apasionada que regresa a su ciudad natal.',
+              sDesc: 'Músico y restaurador con un secreto familiar.',
+              aDesc: 'Directora de la firma rival que compite por el mismo proyecto.'
+            }
+          };
+          const pick = pools[genre] || {
+            p: `Protagonista (${(userTitle?.trim() || 'La Obra').slice(0, 14)})`,
+            s: 'Aliado Estratégico',
+            a: 'Fuerza Antagonista',
+            pDesc: `Figura central impulsada por: ${promptIdea.slice(0, 80)}.`,
+            sDesc: 'Acompañante clave que aporta perspectiva y apoyo.',
+            aDesc: 'Obstáculo principal que se opone al objetivo de la obra.'
+          };
+          return [
+            {
+              id: `char-${Date.now()}-1`,
+              name: pick.p,
+              role: 'protagonista',
+              age: '29',
+              description: pick.pDesc,
+              personality: 'Valiente, observador, determinado',
+              motivation: `Resolver el conflicto de ${(userTitle?.trim() || 'La Obra')}`,
+              arc: 'Evoluciona desde la incertidumbre hasta el dominio de su destino',
+              relationships: `Aliado de ${pick.s}`
+            },
+            {
+              id: `char-${Date.now()}-2`,
+              name: pick.s,
+              role: 'secundario',
+              age: '34',
+              description: pick.sDesc,
+              personality: 'Leal, ingenioso, pragmático',
+              motivation: `Apoyar a ${pick.p} en la travesía`,
+              arc: 'Supera sus propios temores',
+              relationships: `Compañero de ${pick.p}`
+            },
+            {
+              id: `char-${Date.now()}-3`,
+              name: pick.a,
+              role: 'antagonista',
+              age: '48',
+              description: pick.aDesc,
+              personality: 'Calculador, implacable, persuasivo',
+              motivation: 'Imponer su visión a cualquier costo',
+              arc: 'Su plan se ve desafiado por la verdad',
+              relationships: `Rival directo de ${pick.p}`
+            }
+          ];
+        })(),
         world: [
           {
             id: `world-${Date.now()}-1`,
-            name: 'Archivo Central',
+            name: `Escenario Principal: ${(userTitle?.trim() || 'La Obra')}`,
             category: 'lugar',
-            description: 'Complejo subterráneo donde se custodian registros históricos.',
-            rules: 'Acceso restringido mediante credenciales biométricas.'
+            description: `Entorno central donde se desarrolla ${promptIdea.slice(0, 100)}.`,
+            rules: 'Cada zona guarda pistas y desafíos vinculados a la trama.'
           },
           {
             id: `world-${Date.now()}-2`,
-            name: 'El Protocolo',
+            name: `Ley o Regla de ${genre.replace('_', ' ')}`,
             category: 'regla',
-            description: 'Conjunto de normas que rigen el silencio sobre el hallazgo.',
-            rules: 'Cualquier filtración activa la cuarentena del sector.'
+            description: `Principio que rige los acontecimientos en ${(userTitle?.trim() || 'La Obra')}.`,
+            rules: 'Toda acción tiene consecuencias directas en el equilibrio del mundo.'
           }
         ],
         timeline: [
@@ -1043,35 +1079,29 @@ app.post('/api/projects/:id/files/reorder', (req: Request, res: Response) => {
 });
 
 // POST /api/projects/:id/illustrations/regenerate - Regenerate cover or illustration artwork
-app.post('/api/projects/:id/illustrations/regenerate', (req: Request, res: Response) => {
+app.post('/api/projects/:id/illustrations/regenerate', async (req: Request, res: Response) => {
   try {
     const projectId = req.params.id;
-    const { illustrationId, title, prompt, type, subtitle, authorName } = req.body;
+    const { illustrationId, title, prompt, type, subtitle, authorName, artStyle } = req.body;
     const project = getProject(projectId);
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
 
     const illType = type || 'interior';
-    let newImageUrl = '';
-    if (illType === 'portada' || illType === 'contraportada') {
-      newImageUrl = generateCoverArtwork({
-        title: title || project.title,
-        subtitle: subtitle !== undefined ? subtitle : project.subtitle,
-        authorName: authorName !== undefined ? authorName : project.authorName,
-        genre: project.genre,
-        bookType: project.bookType,
-        isBackCover: illType === 'contraportada',
-        synopsis: prompt || project.memory?.synopsis,
-        seed: Date.now()
-      });
-    } else {
-      newImageUrl = generateIllustrationArtwork({
-        title: title || 'Ilustración',
-        prompt: prompt || project.memory?.synopsis || '',
-        type: illType,
-        genre: project.genre,
-        seed: Date.now()
-      });
-    }
+    const geminiKey = aiRouter.getKey('gemini') || process.env.GEMINI_API_KEY;
+    const genResult = await generateRealOrFallbackImage({
+      apiKey: geminiKey,
+      title: title || project.title,
+      prompt: prompt || project.memory?.synopsis || '',
+      type: illType,
+      genre: project.genre,
+      bookType: project.bookType,
+      artStyle: artStyle || 'studio_ghibli',
+      subtitle: subtitle !== undefined ? subtitle : project.subtitle,
+      authorName: authorName !== undefined ? authorName : project.authorName,
+      isBackCover: illType === 'contraportada',
+      seed: Date.now()
+    });
+    const newImageUrl = genResult.imageUrl;
 
     project.illustrations = project.illustrations || [];
     const existingIdx = project.illustrations.findIndex((x: any) => x.id === illustrationId);

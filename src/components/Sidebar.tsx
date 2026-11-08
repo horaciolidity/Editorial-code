@@ -29,6 +29,7 @@ import {
   WorldElement,
   AgentPermissionMode
 } from '../types/editorial';
+import { DESIGN_TEMPLATES } from '../shared/design_templates';
 
 export type SidebarTab =
   | 'files'
@@ -88,6 +89,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [editIllTitle, setEditIllTitle] = useState('');
   const [editIllPrompt, setEditIllPrompt] = useState('');
   const [regeneratingIllId, setRegeneratingIllId] = useState<string | null>(null);
+  const [artStyle, setArtStyle] = useState<string>('studio_ghibli');
+  const [templateCat, setTemplateCat] = useState<'book' | 'comic_manga' | 'cover'>('book');
 
   // New character form state
   const [newCharOpen, setNewCharOpen] = useState(false);
@@ -665,8 +668,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       await onRegenerateIllustration({
                         type: 'illustration',
                         title: `Ilustración ${(currentProject?.illustrations || []).length + 1}`,
-                        prompt: `Escena atmosférica de ${currentProject?.title || 'la obra'}`
-                      });
+                        prompt: `Escena atmosférica de ${currentProject?.title || 'la obra'}`,
+                        artStyle
+                      } as any);
                     } finally {
                       setRegeneratingIllId(null);
                     }
@@ -679,6 +683,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span>{regeneratingIllId === 'new' ? 'Creando...' : 'Nueva'}</span>
                 </button>
               )}
+            </div>
+
+            {/* AI Art Style Selector */}
+            <div className="bg-[#141824] p-2 rounded-lg border border-[#232b3b] space-y-1">
+              <label className="text-[10px] text-slate-400 font-medium block">
+                Estilo Artístico de Generación IA:
+              </label>
+              <select
+                value={artStyle}
+                onChange={e => setArtStyle(e.target.value)}
+                className="w-full bg-[#0a0d14] border border-[#273247] rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-violet-500"
+              >
+                <option value="studio_ghibli">Studio Ghibli (Anime Pictórico)</option>
+                <option value="cinematic">Cinematográfico / Fotorrealista</option>
+                <option value="fantasy_oil">Fantasía Épica (Óleo Editorial)</option>
+                <option value="anime_manga">Manga / Anime Japonés</option>
+                <option value="watercolor_storybook">Acuarela Infantil / Cuento</option>
+                <option value="dark_noir">Novela Gráfica Noir Oscuro</option>
+                <option value="editorial_minimal">Minimalista Editorial</option>
+              </select>
             </div>
 
             <div className="space-y-2.5">
@@ -749,8 +773,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                   illustrationId: ill.id,
                                   type: (ill.type as any) || 'illustration',
                                   title: ill.title,
-                                  prompt: ill.prompt
-                                });
+                                  prompt: ill.prompt,
+                                  artStyle
+                                } as any);
                               } finally {
                                 setRegeneratingIllId(null);
                               }
@@ -822,31 +847,192 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* TAB: FORMATTING */}
+        {/* TAB: FORMATTING & DESIGN TEMPLATES */}
         {activeTab === 'formatting' && (
           <div className="space-y-3 text-slate-300">
             <span className="font-semibold text-slate-200 uppercase tracking-wider text-[10px] px-1 block">
-              Parámetros de Maquetación
+              Plantillas de Diseño Visual
             </span>
-            <div className="bg-[#141824] p-2.5 rounded-lg border border-[#242c3e] space-y-2 text-[11px]">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400">Tamaño de página:</span>
-                <span className="font-mono text-violet-300 font-semibold">{currentProject?.formatting?.pageSize}</span>
+
+            {/* Template Category Tabs */}
+            <div className="grid grid-cols-3 gap-1 bg-[#0b0e16] p-1 rounded-lg border border-[#1f2738] text-[10px]">
+              {[
+                { id: 'book', label: 'Libros (7)' },
+                { id: 'comic_manga', label: 'Cómic/Manga' },
+                { id: 'cover', label: 'Portadas (7)' }
+              ].map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setTemplateCat(c.id as any)}
+                  className={`py-1 px-1.5 rounded font-medium transition-colors truncate ${
+                    templateCat === c.id
+                      ? 'bg-violet-600 text-white'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Visual Template Cards */}
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-0.5">
+              {DESIGN_TEMPLATES.filter(t => t.category === templateCat).map(tpl => {
+                const isSelected =
+                  templateCat === 'cover'
+                    ? currentProject?.formatting?.coverTemplateId === tpl.id
+                    : currentProject?.formatting?.templateId === tpl.id;
+                return (
+                  <div
+                    key={tpl.id}
+                    onClick={() => {
+                      if (!currentProject?.formatting) return;
+                      if (templateCat === 'cover') {
+                        onUpdateProject({
+                          formatting: {
+                            ...currentProject.formatting,
+                            coverTemplateId: tpl.id,
+                            accentColor: tpl.palette.accent
+                          }
+                        });
+                      } else {
+                        onUpdateProject({
+                          formatting: {
+                            ...currentProject.formatting,
+                            templateId: tpl.id,
+                            fontFamily: tpl.fontFamily,
+                            chapterTitleStyle: tpl.chapterTitleStyle,
+                            imagePlacement: tpl.imagePlacement,
+                            decorativeStyle: tpl.decorativeStyle,
+                            accentColor: tpl.palette.accent,
+                            backgroundColor: tpl.palette.bg,
+                            textColor: tpl.palette.text
+                          }
+                        });
+                      }
+                    }}
+                    className={`p-2 rounded-lg border cursor-pointer transition-all flex items-center gap-2.5 ${
+                      isSelected
+                        ? 'border-violet-500 bg-violet-950/40'
+                        : 'border-[#232c3f] bg-[#131722] hover:border-slate-600'
+                    }`}
+                  >
+                    {/* Live Mini Visual Preview */}
+                    <div
+                      className="w-11 h-14 rounded shrink-0 flex flex-col justify-between p-1.5 border shadow-inner"
+                      style={{
+                        backgroundColor: tpl.palette.bg,
+                        borderColor: tpl.palette.border,
+                        fontFamily: tpl.fontFamily
+                      }}
+                    >
+                      <div
+                        className="h-1.5 w-7 rounded-xs"
+                        style={{ backgroundColor: tpl.palette.accent }}
+                      />
+                      <div className="space-y-1">
+                        <div
+                          className="h-1 w-full rounded-xs opacity-80"
+                          style={{ backgroundColor: tpl.palette.text }}
+                        />
+                        <div
+                          className="h-1 w-5 rounded-xs opacity-60"
+                          style={{ backgroundColor: tpl.palette.text }}
+                        />
+                      </div>
+                      <div
+                        className="h-2.5 w-full rounded-xs opacity-35"
+                        style={{ backgroundColor: tpl.palette.accent }}
+                      />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-slate-100 text-xs truncate">{tpl.name}</div>
+                      <p className="text-[10px] text-slate-400 line-clamp-2 leading-snug mt-0.5">
+                        {tpl.description}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Interactive Formatting Controls */}
+            <span className="font-semibold text-slate-200 uppercase tracking-wider text-[10px] px-1 block pt-1">
+              Personalización Editorial
+            </span>
+            <div className="bg-[#141824] p-2.5 rounded-lg border border-[#242c3e] space-y-2.5 text-[11px]">
+              <div>
+                <label className="text-slate-400 block mb-1 text-[10px]">Tamaño de página</label>
+                <select
+                  value={currentProject?.formatting?.pageSize || '6x9'}
+                  onChange={e =>
+                    currentProject?.formatting &&
+                    onUpdateProject({
+                      formatting: { ...currentProject.formatting, pageSize: e.target.value as any }
+                    })
+                  }
+                  className="w-full bg-[#0a0d14] border border-[#263147] rounded px-2 py-1 text-xs text-slate-200"
+                >
+                  <option value="6x9">6" × 9" (Novela Estándar)</option>
+                  <option value="5x8">5" × 8" (Bolsillo / Cuento)</option>
+                  <option value="A5">A5 (148 × 210 mm)</option>
+                  <option value="A4">A4 (Cómic / Manual)</option>
+                </select>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400">Tipografía:</span>
-                <span className="font-serif text-slate-200">{currentProject?.formatting?.fontFamily}</span>
+
+              <div>
+                <label className="text-slate-400 block mb-1 text-[10px]">Tipografía</label>
+                <select
+                  value={currentProject?.formatting?.fontFamily || 'Georgia, serif'}
+                  onChange={e =>
+                    currentProject?.formatting &&
+                    onUpdateProject({
+                      formatting: { ...currentProject.formatting, fontFamily: e.target.value }
+                    })
+                  }
+                  className="w-full bg-[#0a0d14] border border-[#263147] rounded px-2 py-1 text-xs text-slate-200"
+                >
+                  <option value="Georgia, serif">Georgia (Clásica Literaria)</option>
+                  <option value="Inter, system-ui, sans-serif">Inter (Moderna Minimalista)</option>
+                  <option value="Palatino, Georgia, serif">Palatino (Editorial Vintage)</option>
+                  <option value="Verdana, sans-serif">Verdana (Infantil / Lectura Fácil)</option>
+                  <option value="Courier New, monospace">Courier (Guion / Cómic)</option>
+                </select>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400">Papel:</span>
-                <span className="text-amber-300 capitalize">{currentProject?.formatting?.paperType}</span>
+
+              <div>
+                <label className="text-slate-400 block mb-1 text-[10px]">Ubicación de Imágenes</label>
+                <select
+                  value={currentProject?.formatting?.imagePlacement || 'inline'}
+                  onChange={e =>
+                    currentProject?.formatting &&
+                    onUpdateProject({
+                      formatting: { ...currentProject.formatting, imagePlacement: e.target.value as any }
+                    })
+                  }
+                  className="w-full bg-[#0a0d14] border border-[#263147] rounded px-2 py-1 text-xs text-slate-200"
+                >
+                  <option value="top">Al inicio del capítulo</option>
+                  <option value="inline">Integrada en la escena</option>
+                  <option value="full_bleed">Página completa (Cómic/Álbum)</option>
+                  <option value="side_by_side">Junto al texto (Educativo)</option>
+                </select>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400">Encuadernación:</span>
-                <span className="text-slate-200 capitalize">{currentProject?.formatting?.bindingType.replace('_', ' ')}</span>
-              </div>
-              <div className="pt-2 border-t border-[#1e2533] text-[10px] text-slate-400">
-                Márgenes: Int {currentProject?.formatting?.margins.insideMm}mm • Ext {currentProject?.formatting?.margins.outsideMm}mm • Sup/Inf {currentProject?.formatting?.margins.topMm}mm
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-slate-400 text-[10px]">Numeración de páginas</span>
+                <input
+                  type="checkbox"
+                  checked={currentProject?.formatting?.pageNumbering ?? true}
+                  onChange={e =>
+                    currentProject?.formatting &&
+                    onUpdateProject({
+                      formatting: { ...currentProject.formatting, pageNumbering: e.target.checked }
+                    })
+                  }
+                  className="accent-violet-500"
+                />
               </div>
             </div>
           </div>
